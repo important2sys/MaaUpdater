@@ -1,6 +1,6 @@
 @echo off
 rem ===========================================================================
-rem  MaaUpdaterBat -- the one and only entry point.
+rem  MaaUpdater -- the one and only entry point.
 rem
 rem  Double-click this file. It opens the graphical updater.
 rem

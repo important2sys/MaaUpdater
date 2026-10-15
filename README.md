@@ -1,4 +1,4 @@
-# MaaUpdaterBat
+# MaaUpdater
 
 面向 Windows 的 **MAA / MaaEnd 更新加速工具集**，覆盖三条相互独立的更新链路：
 
@@ -60,7 +60,7 @@ CRC32，无法抵御精心构造的替换。因此走镜像更新资源时，安
 ## 四、系统构成
 
 ```
-MaaUpdaterBat\
+MaaUpdater\
 ├── MaaUpdater.bat          唯一入口，双击即打开图形界面
 ├── 使用说明.txt            面向最终用户的简要说明
 ├── 安全提醒与免责声明.md    安全提醒、法律风险与免责条款
@@ -165,7 +165,7 @@ update-all.bat maa --inspect "D:\RL"                      检查目录并列出�
 目录即可还原：
 
 ```
-xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-<时间戳>\*" "D:\RL\MAA-v6.19.0-win-x64\"
+xcopy /E /Y /I "D:\RRL\MaaUpdater\ghupdate\_backup\MAA-<时间戳>\*" "D:\RL\MAA-v6.19.0-win-x64\"
 ```
 
 ---

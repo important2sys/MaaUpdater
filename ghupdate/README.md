@@ -1,6 +1,6 @@
 # ghupdate —— MAA / MaaEnd 更新器
 
-`ghupdate` 是 MaaUpdaterBat 的功能主体，覆盖三条相互独立的更新链路：
+`ghupdate` 是 MaaUpdater 的功能主体，覆盖三条相互独立的更新链路：
 
 | 链路 | 对象 | 子命令 |
 |---|---|---|
@@ -172,7 +172,7 @@ Python3*` → `%APPDATA%\uv\python\cpython-*` → `PATH`，对每个候选执行
 | `D:\RL\MAA-v6.9.5-win-x64\MAA.exe` | 直接填 exe 文件 → 取所在目录 |
 | `%USERPROFILE%\Desktop\MAA` | 展开环境变量 |
 | `D:\RL`（父目录） | 一层容错：询问「使用下面那个吗」；非交互时直接报错 |
-| `D:\RRL\MaaUpdaterBat` | 非安装目录 → 报错，并列出目录内容供判断 |
+| `D:\RRL\MaaUpdater` | 非安装目录 → 报错，并列出目录内容供判断 |
 
 ### 3.3 一层子目录容错
 
@@ -256,7 +256,7 @@ update-all.bat maa --show-config
 ```
 
 ```
-配置文件：D:\RRL\MaaUpdaterBat\ghupdate\config.json
+配置文件：D:\RRL\MaaUpdater\ghupdate\config.json
   状态  ：已读取
 
   mirror.enabled             = false  [config.json]
@@ -373,7 +373,7 @@ update-all.bat maa --no-mirror                               本次强制直连�
 
 ```
 # 例：回滚 MAA
-xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-20261015-133000\*" "D:\RL\MAA-v6.19.0-win-x64\"
+xcopy /E /Y /I "D:\RRL\MaaUpdater\ghupdate\_backup\MAA-20261015-133000\*" "D:\RL\MAA-v6.19.0-win-x64\"
 ```
 
 ---
