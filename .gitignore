@@ -4,8 +4,7 @@
 
 # ---- 运行期产物：绝不应入库 ----
 
-# 本地 CA 与叶证书（含私钥！由 ghproxy/gen-certs.bat 生成）
-ghproxy/certs/
+# 私钥与证书（防御性排除：任何形式的密钥都不应入库）
 *.key
 *.crt
 *.csr
@@ -19,11 +18,9 @@ ghupdate/_backup/
 ghupdate/config.json
 ghupdate/config.json.tmp
 
-# 代理 / 更新器的运行时文件
+# 更新器的运行时文件
 *.log
 *.pid
-ca_installed.flag
-ghproxy.log
 
 # ---- Python ----
 __pycache__/

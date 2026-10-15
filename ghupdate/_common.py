@@ -6,7 +6,7 @@ ghupdate 共享工具库 —— 零第三方依赖（只用 Python 标准库）�
 解压覆盖 -> 备份回滚」的能力，完全不改动系统（不装证书、不改 hosts、
 不写任何程序配置文件，只“读”配置用于版本探测）。
 
-设计基线见 docs\\MAA-MaaEnd更新方案B细化.md 与 docs\\ghupdate-可配置化与GUI规划.md
+设计基线见 docs\\技术说明.md
 """
 
 import ctypes

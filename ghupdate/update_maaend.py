@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-MaaEnd 本体更新器（方案 B）
+MaaEnd 本体更新器
 
 流程：读配置 -> 定位安装目录（手动指定）-> 进程检查 -> 读 interface.json 版本 ->
 查 GitHub 最新 -> 清理 .downloading 残骸 -> 镜像下载 -> SHA256 校验 -> 备份 ->
 解压覆盖 -> 版本复核
 
 不装证书、不改 hosts、不写程序配置（只读 interface.json 用于探测版本）。
-配置项与目录指定见 ../docs/ghupdate-可配置化与GUI规划.md。
+配置项与目录指定见 ../docs/技术说明.md。
 """
 
 import argparse

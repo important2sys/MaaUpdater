@@ -4,7 +4,7 @@
 
 为什么要有这个脚本
 ==================
-仓库结构是给开发者看的：根目录并列着 ghupdate / ghproxy / docs 三个目录，
+仓库结构是给开发者看的：根目录并列着 ghupdate / docs 两个目录，
 还有 .gitattributes / .gitignore / tools\\ 这些与使用无关的东西。直接把仓库
 压成 zip，用户打开会一脸茫然 —— 到底点哪个文件？
 
@@ -17,8 +17,7 @@
     ├── README.md
     ├── ghupdate\\              <- 主程序（界面 + 命令行）
     └── 可选\\                  <- 平时用不到，删了也不影响使用
-        ├── ghproxy\\               备用方案（需往系统信任库装本地 CA）
-        └── docs\\                  排查记录与设计文档
+        └── docs\\                  技术说明
 
 排除规则与 .gitignore 对齐（运行期产物、私钥、本机缓存），再额外排除 VCS
 元数据与打包产物自身。
@@ -60,7 +59,6 @@ LAYOUT = [
     ("file", "安全提醒与免责声明.md", "安全提醒与免责声明.md"),
     ("file", "README.md", "README.md"),
     ("dir", "ghupdate", "ghupdate"),
-    ("dir", "ghproxy", "可选/ghproxy"),
     ("dir", "docs", "可选/docs"),
 ]
 
@@ -68,7 +66,6 @@ LAYOUT = [
 SKIP_DIRS = {
     "__pycache__",
     "_cache", "_backup",          # 下载缓存与更新前备份
-    "certs",                      # ghproxy 的 CA 与叶证书（含私钥！）
     ".git", ".github",
     "dist", "build", "tools",     # 打包产物与打包脚本自身
     ".venv", "venv", "ENV", "env",
@@ -85,7 +82,7 @@ SKIP_EXT = (
 
 # 文件名黑名单
 SKIP_NAMES = {
-    "ca_installed.flag", "config.json.tmp",
+    "config.json.tmp",
     "Thumbs.db", "desktop.ini", "Desktop.ini", ".DS_Store",
 }
 
@@ -98,7 +95,7 @@ CRLF_EXT = (".bat", ".cmd", ".txt", ".md", ".json")
 # 打包后自检：这些东西出现任何一个都说明排除规则漏了
 FORBIDDEN_IN_ZIP = (
     "__pycache__", "_cache/", "_backup/", ".git/",
-    "certs/", ".key", ".log", ".pid", "dist/", "tools/",
+    ".key", ".log", ".pid", "dist/", "tools/",
 )
 
 # 摘要里给顶层条目加的说明（键是包内顶层条目名）

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MAA 本体更新器（方案 B）
+MAA 本体更新器
 
 流程：读配置 -> 定位安装目录（手动指定）-> 进程检查 -> 探测当前版本 ->
 查最新 -> 选包(优先 OTA 增量) -> 镜像下载 -> SHA256 校验 -> 备份 ->
@@ -9,7 +9,7 @@ MAA 本体更新器（方案 B）
 加 --with-resource 则在上面跑完后接着更新 MAA 资源（见 update_maa_res.py）。
 
 不装证书、不改 hosts、不写程序配置（只读配置文件用于探测版本）。
-配置项与目录指定见 ../docs/ghupdate-可配置化与GUI规划.md，用法见 update-all.bat / README.md
+配置项与目录指定见 ../docs/技术说明.md，用法见 update-all.bat / README.md
 """
 
 import argparse
