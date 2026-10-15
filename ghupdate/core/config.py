@@ -47,6 +47,8 @@ DEFAULTS = {
         # 指定目录里没有主程序时，是否只在它的“直接子目录”里探一层并征求确认
         "parent_probe": True,
     },
+    # MAA 的更新通道（stable / beta / alpha）。MaaEnd 无此概念，忽略本项。
+    "channel": "stable",
     "network": {"proxy": "", "timeout": 30, "retries": 3},
     "behavior": {
         "prune": False,

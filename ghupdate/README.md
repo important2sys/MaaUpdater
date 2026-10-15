@@ -49,6 +49,52 @@ update-all.bat all                    先 MAA 再 MaaEnd
 update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
 ```
 
+### 图形界面
+
+双击 **`ghupdate-gui.bat`**，一个窗口里看完两个程序的状态：
+
+```
+ MAA / MaaEnd 更新器
+ 镜像 https://ghfast.top/        配置：...\ghupdate\config.json
+ ──────────────────────────────────────────────────────────────
+  MAA                                              [已是最新]
+  安装目录：D:\RL\MAA-v6.9.5-win-x64
+  当前 v6.19.0                最新 v6.19.0
+  [检查更新] [立即更新]                            [打开目录]
+ ──────────────────────────────────────────────────────────────
+  MaaEnd                                           [可更新]
+  安装目录：D:\RL\MaaEnd-win-x86_64-v2.23.0
+  当前 v2.32.0                最新 v2.33.0
+  [检查更新] [立即更新]                            [打开目录]
+ ──────────────────────────────────────────────────────────────
+  ███████████░░░░░░░░░░░░░░░  45.2%  132.5 MB / 293.1 MB  3.27 MB/s
+ ──────────────────────────────────────────────────────────────
+  [收起日志]                                            [清空]
+  [v] MAA 未在运行
+  [1/6] 查询 MAA 最新版本（stable 频道）…
+ ──────────────────────────────────────────────────────────────
+  设置…   查看配置   退出
+```
+
+- **检查更新** —— 只查版本、不下载，徽章变成「已是最新」或「可更新」
+- **立即更新** —— 与命令行**完全相同**的流程（下载 → 校验 → 备份 → 覆盖 → 复核），
+  动手前弹一次确认框，过程中进度条实时走、日志逐行刷
+- **设置…** —— 镜像地址、安装目录、代理、超时/重试、更新通道、备份/校验/重启等全部开关
+- **查看配置** —— 等价于 `--show-config`，含每一项的来源
+
+界面与命令行**共用同一个 `config.json`**，改一边另一边立刻生效。界面调用的是
+`update_maa.main()` / `update_maaend.main()`，不是另写一套逻辑 —— 所以不会出现
+「界面能更新、命令行不行」这类差异。
+
+> **为什么 GUI 要单独挑解释器**：本机 managed Python（3.13.x）**没有编译 Tcl/Tk**，
+> 连 `import tkinter` 都失败。`ghupdate-gui.bat` 按序探测
+> `%MAAUPD_PYTHON%` → `%LOCALAPPDATA%\Programs\Python\Python3*` →
+> `%APPDATA%\uv\python\cpython-*` → PATH，逐个试 `import tkinter`，谁行用谁。
+> 全都不行会列出探测过的位置并提示怎么修，**命令行不受影响**。
+>
+> 窗口起不来时用 **`ghupdate-gui-debug.bat`**（保留控制台看 traceback）。
+> 两者都会把崩溃信息追加到 `ghupdate\gui-error.log`。
+
 ### 选项
 
 | 选项 | 作用 |
@@ -212,18 +258,27 @@ update-all.bat maa --no-mirror                           本次直接直连
 
 ```
 ghupdate\
-├── update-all.bat         入口（纯 ASCII，双击即用）
+├── update-all.bat         命令行入口（纯 ASCII，双击即用）
+├── ghupdate-gui.bat       图形界面入口（自动挑带 tkinter 的解释器 + pythonw）
+├── ghupdate-gui-debug.bat 同上，但保留控制台看报错（排障用）
 ├── ghupdate.py            中文菜单 + 分发
 ├── update_maa.py          MAA 更新器
 ├── update_maaend.py       MaaEnd 更新器
 ├── _common.py             共享库（HTTP/下载/校验/ZIP/备份/版本探测/配置编排）
-├── core\                  纯逻辑模块（CLI 与将来的 GUI 共用）
+├── core\                  纯逻辑模块（CLI 与 GUI 共用，不依赖界面）
 │   ├── config.py          配置加载·合并·来源追踪·保存
+│   ├── events.py          事件契约（Reporter）+ 终端实现
 │   ├── locate.py          安装目录解析（4 级优先级 + 规范化 + 校验 + 一层容错）
 │   └── mirror.py          镜像候选构造
+├── gui\                   图形界面（Tkinter，零第三方依赖）
+│   ├── app.py             主窗口（单页卡片式）+ 线程与事件循环
+│   ├── reporter.py        队列桥接：把逻辑事件投给主线程
+│   ├── settings.py        设置面板（镜像/目录/网络/行为）
+│   └── theme.py           DPI、字体、配色
 ├── config.example.json    配置模板（config.json 不入库）
 ├── _cache\                下载缓存（*.part 支持断点续传；校验通过后成为 *.zip 可复用）
-└── _backup\               更新前备份（回滚用）
+├── _backup\               更新前备份（回滚用）
+└── gui-error.log          界面崩溃日志（仅在出错时生成）
 ```
 
 ## 它到底做了什么
@@ -291,5 +346,9 @@ xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-20261015-133000\*" "D:
 ## 环境要求
 
 - Windows
-- Python 3.8+（脚本会依次探测：托管 venv → 托管 3.13.12 → 系统 Python 3.12/3.13/3.14 → `where python`）
-- 无需第三方 pip 包
+- **命令行**：Python 3.8+（`update-all.bat` 会依次探测：托管 venv → 托管 3.13.12 →
+  系统 Python 3.12/3.13/3.14 → `where python`）
+- **图形界面**：还需要一个**带 tkinter 的解释器** —— tkinter 是随解释器编译进去的，
+  装不上也补不齐，所以 managed Python 3.13.x（无 Tcl/Tk）**跑不了界面但能跑命令行**。
+  `ghupdate-gui.bat` 会自动挑出可用的那个（见上文）
+- 无需任何第三方 pip 包

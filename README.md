@@ -16,12 +16,15 @@ MaaEnd 日志里明写自己是「直连（无代理）」，两次下载分别�
 ```
 MaaUpdaterBat\
 ├── ghupdate\              方案 B：独立更新器（推荐，零系统改动）
-│   ├── update-all.bat         入口，双击即用（纯 ASCII）
+│   ├── update-all.bat         命令行入口，双击即用（纯 ASCII）
+│   ├── ghupdate-gui.bat       图形界面入口（自动挑带 tkinter 的解释器）
+│   ├── ghupdate-gui-debug.bat 同上，保留控制台看报错
 │   ├── ghupdate.py            中文菜单 + 分发
 │   ├── update_maa.py          MAA 更新器
 │   ├── update_maaend.py       MaaEnd 更新器
 │   ├── _common.py             共享库（HTTP / 下载 / 校验 / ZIP / 备份 / 版本探测）
-│   ├── core\                  纯逻辑模块（config / locate / mirror，CLI 与将来的 GUI 共用）
+│   ├── core\                  纯逻辑模块（config / events / locate / mirror，CLI 与 GUI 共用）
+│   ├── gui\                   图形界面（Tkinter：app / reporter / settings / theme）
 │   ├── config.example.json    配置模板（config.json 是本机配置，不入库）
 │   └── README.md              详细说明
 ├── ghproxy\               方案 A′：本地拦截代理（需临时装 CA）
@@ -47,7 +50,7 @@ MaaUpdaterBat\
 |---|---|---|
 | 原理 | 自己下载 + 校验 + 解压覆盖 | 本地 MITM 代理，把 `github.com` 回源到镜像 |
 | 系统改动 | **零**（不装证书、不改 hosts、不写程序配置） | 需临时把本地 CA 装入当前用户信任库 |
-| 使用方式 | 双击 `update-all.bat` | 双击 `run-maa.bat` / `run-maaend.bat` |
+| 使用方式 | 双击 `ghupdate-gui.bat`（界面）或 `update-all.bat`（命令行） | 双击 `run-maa.bat` / `run-maaend.bat` |
 | 程序内自动更新 | 不支持（需先退出程序） | 支持（程序内点「检查更新」即可） |
 | 风险 | 低 | 中（CA 信任范围为整个 Windows 账号） |
 | 现状 | ✅ 已实机验证可用 | 已实现并验证，**未安装 CA**（备用） |
@@ -59,6 +62,16 @@ MaaUpdaterBat\
 
 ## 快速开始
 
+**图形界面**（日常用）：
+
+```
+cd ghupdate
+ghupdate-gui.bat            # 窗口里看状态、点「检查更新」/「立即更新」
+ghupdate-gui-debug.bat      # 同一个界面，但保留控制台看报错
+```
+
+**命令行**（脚本化 / 定时任务）：
+
 ```
 cd ghupdate
 update-all.bat              # 中文菜单
@@ -67,14 +80,21 @@ update-all.bat maa          # 只更新 MAA
 update-all.bat all          # 先 MAA 再 MaaEnd
 ```
 
+两条入口**共用同一份 `config.json` 和同一套更新逻辑**（界面调的就是
+`update_maa.main()`），在窗口里改完设置，命令行立刻生效。
+
 ⚠️ **更新前必须先完全退出对应程序** —— 脚本检测到目标程序在运行会直接拒绝执行
-（运行时文件被占用，替换必然失败）。
+（运行时文件被占用，替换必然失败）。界面里也会拦下来并提示。
 
 ---
 
 ## 配置化与安装目录
 
-镜像与安装目录都在 `ghupdate\config.json` 里改，不必动代码：
+镜像与安装目录都在 `ghupdate\config.json` 里改，不必动代码。
+**界面里点「设置…」也能改全部开关**（镜像地址、安装目录、代理、超时/重试、
+更新通道、备份/校验/重启/清理），保存用的就是同一套原子写：
+
+
 
 ```
 update-all.bat maa --show-config                            看看当前生效了什么（含每项来源）
@@ -108,6 +128,9 @@ update-all.bat maa --mirror https://其他镜像/                换镜像（可
 
 - Windows
 - Python 3.8+（`update-all.bat` 会依次探测：托管 venv → 托管 3.13.12 → 系统 Python → `where python`）
+- **图形界面**另需一个**带 tkinter 的解释器**。tkinter 随解释器编译而来，装不上也补不齐 ——
+  本机 managed Python 3.13.x 没有 Tcl/Tk，因此**能跑命令行、跑不了界面**。
+  `ghupdate-gui.bat` 会自动挑出可用的那个，全都不行会提示怎么修。
 - **无需任何第三方 pip 包**（证书由 `openssl` 生成，代理只用 Python 标准库）
 - `ghproxy` 另需 `openssl`（Git for Windows 自带）
 
@@ -129,9 +152,9 @@ update-all.bat maa --mirror https://其他镜像/                换镜像（可
 
 ### 原有工作目录
 
-本仓库是从 `D:\RRL\.workbuddy\{ghupdate,ghproxy}` 迁移归集而来。原目录**保留未删**，
-其中 `_cache\`（315 MB）与 `_backup\`（372 MB）是当时实机更新的运行期数据；
-2026-10-15 那次更新的回滚备份仍在 `D:\RRL\.workbuddy\ghupdate\_backup\`。
+本仓库最初从 `D:\RRL\.workbuddy\{ghupdate,ghproxy}` 迁移归集而来。那批原目录
+（含 `_cache\` 315 MB 与 `_backup\` 372 MB 的运行期数据）已于 2026-10-15 清理完毕，
+**本仓库现在是唯一副本**，`D:\RRL` 下只剩 `MaaUpdaterBat\` 与 `AC6\`。
 
 ### 依赖外部镜像
 

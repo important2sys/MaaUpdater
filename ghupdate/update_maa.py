@@ -94,7 +94,8 @@ def main(argv=None):
     ap.add_argument("--no-backup", action="store_true", help="跳过备份（不建议）")
     ap.add_argument("--no-verify", action="store_true", help="无官方摘要时仍继续（不建议）")
     ap.add_argument("--proxy", default="", help="可选：显式代理，如 http://127.0.0.1:7890")
-    ap.add_argument("--channel", default="stable", choices=["stable", "beta", "alpha"])
+    ap.add_argument("--channel", default="", choices=["stable", "beta", "alpha"],
+                    help="更新频道；留空则取 config.json 的 channel，再退回 stable")
     args = ap.parse_args(argv)
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -106,6 +107,8 @@ def main(argv=None):
         args, KIND, title="MAA 本体更新",
         version_of=lambda p: C.pe_file_version(os.path.join(p, MARKER)))
     proxy = cfg.proxy or None
+    # 频道：命令行 > config.json > stable（与 GUI 走同一套取法，免得两边不一致）
+    channel = args.channel or str(cfg.get("channel", "stable") or "stable")
 
     # ---- 1. 进程检查 ----
     if C.process_running(MARKER):
@@ -132,8 +135,8 @@ def main(argv=None):
         cur_ver = exe_norm
 
     # ---- 3. 查最新版本 ----
-    C.log("\n[1/6] 查询 MAA 最新版本（%s 频道）…" % args.channel)
-    latest, detail = C.maa_latest(args.channel, proxy=proxy)
+    C.log("\n[1/6] 查询 MAA 最新版本（%s 频道）…" % channel)
+    latest, detail = C.maa_latest(channel, proxy=proxy)
     latest = C.norm_ver(latest)
     assets = (detail.get("details") or {}).get("assets") or []
     C.ok("当前 %s  ->  最新 %s" % (cur_ver or "?", latest))
