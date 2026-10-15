@@ -2,11 +2,12 @@
 """
 MAA 本体更新器（方案 B）
 
-流程：进程检查 -> 探测当前版本 -> 查最新 -> 选包(优先 OTA 增量) ->
-镜像下载 -> SHA256 校验 -> 备份 -> 解压覆盖 + 应用 removelist -> 版本复核
+流程：读配置 -> 定位安装目录（手动指定）-> 进程检查 -> 探测当前版本 ->
+查最新 -> 选包(优先 OTA 增量) -> 镜像下载 -> SHA256 校验 -> 备份 ->
+解压覆盖 + 应用 removelist -> 版本复核
 
 不装证书、不改 hosts、不写程序配置（只读配置文件用于探测版本）。
-用法见 update-all.bat / README.md
+配置项与目录指定见 ../docs/ghupdate-可配置化与GUI规划.md，用法见 update-all.bat / README.md
 """
 
 import argparse
@@ -20,8 +21,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as C  # noqa: E402
 
-DEFAULT_ROOT = r"D:\RL"
-DEFAULT_GLOB = "MAA*"
+KIND = "maa"
 MARKER = "MAA.exe"
 
 # OTA 包名：MAAComponent-OTA-<from>_<to>-win-x64.zip
@@ -83,8 +83,9 @@ def pick_asset(assets, name):
 # ---------------------------------------------------------------------------
 
 def main():
-    ap = argparse.ArgumentParser(description="MAA 本体更新器（经 ghfast.top 镜像）")
-    ap.add_argument("--install", default="", help="MAA 安装目录（默认自动探测 %s\\%s）" % (DEFAULT_ROOT, DEFAULT_GLOB))
+    ap = argparse.ArgumentParser(
+        description="MAA 本体更新器（镜像可配置、安装目录手动指定）")
+    C.add_config_args(ap, MARKER)
     ap.add_argument("--check", action="store_true", help="只检查不下载（干跑）")
     ap.add_argument("--prune", action="store_true", help="按新 filelist 清理废弃程序文件（默认关闭）")
     ap.add_argument("--restart", action="store_true", help="更新完成后启动 MAA")
@@ -99,13 +100,11 @@ def main():
     cache_dir = os.path.join(here, "_cache")
     os.makedirs(cache_dir, exist_ok=True)
 
-    # ---- 0. 定位安装目录 ----
-    install = args.install or C.autodetect_dir(DEFAULT_ROOT, DEFAULT_GLOB, MARKER)
-    if not install or not os.path.isfile(os.path.join(install, MARKER)):
-        C.die("找不到 MAA 安装目录（可在 --install 指定）")
-    C.log("=" * 66)
-    C.log(" MAA 本体更新  |  %s" % install)
-    C.log("=" * 66)
+    # ---- 0. 读配置 + 定位安装目录 ----
+    cfg, install = C.setup(
+        args, KIND, title="MAA 本体更新",
+        version_of=lambda p: C.pe_file_version(os.path.join(p, MARKER)))
+    proxy = cfg.proxy or None
 
     # ---- 1. 进程检查 ----
     if C.process_running(MARKER):
@@ -133,7 +132,7 @@ def main():
 
     # ---- 3. 查最新版本 ----
     C.log("\n[1/6] 查询 MAA 最新版本（%s 频道）…" % args.channel)
-    latest, detail = C.maa_latest(args.channel, proxy=args.proxy or None)
+    latest, detail = C.maa_latest(args.channel, proxy=proxy)
     latest = C.norm_ver(latest)
     assets = (detail.get("details") or {}).get("assets") or []
     C.ok("当前 %s  ->  最新 %s" % (cur_ver or "?", latest))
@@ -168,7 +167,7 @@ def main():
     C.log("\n[3/6] 获取官方 SHA256 摘要…")
     digest = None
     try:
-        rel = C.github_release("MaaAssistantArknights/MaaRelease", tag=latest, proxy=args.proxy or None)
+        rel = C.github_release("MaaAssistantArknights/MaaRelease", tag=latest, proxy=proxy)
         digest = C.release_digests(rel).get(name)
     except Exception as e:  # noqa: BLE001
         C.warn("从 GitHub API 取摘要失败：%s" % e)
@@ -176,8 +175,8 @@ def main():
         C.ok("官方摘要 %s" % digest)
     else:
         C.warn("未取到官方摘要")
-        if not args.no_verify:
-            C.die("无摘要可校验，为安全起见中止（如确认要继续，加 --no-verify）")
+        if cfg.get("behavior.verify", True):
+            C.die("无摘要可校验，为安全起见中止（如确认要继续，可加 --no-verify 或改配置 behavior.verify）")
 
     dest = os.path.join(cache_dir, name)
 
@@ -192,9 +191,8 @@ def main():
         return 0
 
     # ---- 6. 下载 ----
-    C.log("\n[4/6] 下载更新包（镜像优先，直连兜底）…")
-    urls = [C.MIRROR_PREFIX + origin, origin]
-    C.download(urls, dest, expected_size=size, proxy=args.proxy or None, retries=3)
+    C.log("\n[4/6] 下载更新包…")
+    C.download_asset(cfg, origin, dest, expected_size=size, proxy=proxy)
 
     # ---- 7. 校验 ----
     C.log("\n[5/6] SHA256 校验…")
@@ -204,7 +202,7 @@ def main():
             C.die("SHA256 不符！已中止，未覆盖任何文件。\n  期望 %s\n  实得 %s" % (digest, actual))
         C.ok("SHA256 一致：%s" % actual)
     else:
-        C.warn("已按 --no-verify 跳过校验")
+        C.warn("已按配置跳过校验（behavior.verify = false）")
 
     # ---- 读包内清单 ----
     with zipfile.ZipFile(dest) as zf:
@@ -216,7 +214,7 @@ def main():
         C.log("  包内文件 %d 个，removelist %d 条" % (len(entries), len(removelist)))
 
         # ---- 备份 ----
-        if not args.no_backup:
+        if cfg.get("behavior.backup", True):
             stamp = time.strftime("%Y%m%d-%H%M%S")
             bdir = os.path.join(here, "_backup", "MAA-%s" % stamp)
             est = C.backup_size_estimate(entries + removelist, install)
@@ -251,7 +249,7 @@ def main():
         C.ok("按 removelist 删除 %d 个旧文件" % removed)
 
     # prune（可选）
-    if args.prune:
+    if cfg.get("behavior.prune", False):
         C.log("\n[--prune] 按新 filelist.txt 清理废弃程序文件（仅限 %s）…" % "/".join(PRUNE_ROOTS))
         rm = C.prune_by_filelist(install, "filelist.txt", PRUNE_ROOTS)
         C.ok("清理 %d 个多余文件" % rm)
@@ -266,7 +264,7 @@ def main():
     else:
         C.warn("更新已写入，但 exe 版本读回为 %s（目标 %s），请手动确认" % (new_ver or "?", latest))
 
-    if args.restart:
+    if cfg.get("behavior.restart", False):
         exe = os.path.join(install, MARKER)
         C.log("启动 %s …" % exe)
         os.startfile(exe)  # noqa: S606

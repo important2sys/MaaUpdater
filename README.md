@@ -21,6 +21,8 @@ MaaUpdaterBat\
 │   ├── update_maa.py          MAA 更新器
 │   ├── update_maaend.py       MaaEnd 更新器
 │   ├── _common.py             共享库（HTTP / 下载 / 校验 / ZIP / 备份 / 版本探测）
+│   ├── core\                  纯逻辑模块（config / locate / mirror，CLI 与将来的 GUI 共用）
+│   ├── config.example.json    配置模板（config.json 是本机配置，不入库）
 │   └── README.md              详细说明
 ├── ghproxy\               方案 A′：本地拦截代理（需临时装 CA）
 │   ├── ghproxy.py             纯标准库 MITM 代理（127.0.0.1:8899）
@@ -33,6 +35,7 @@ MaaUpdaterBat\
 └── docs\                  排查与设计文档
     ├── MAA-MaaEnd更新加速计划.md      完整诊断 + 方案 A/B/C
     ├── MAA-MaaEnd更新方案B细化.md     更新规则分析 + 方案 B 设计
+    ├── ghupdate-可配置化与GUI规划.md  镜像可换 / 手动指定目录 / GUI 路线
     └── MAA-MaaEnd加速-风险说明.md     写入系统信任库的风险评估
 ```
 
@@ -66,6 +69,23 @@ update-all.bat all          # 先 MAA 再 MaaEnd
 
 ⚠️ **更新前必须先完全退出对应程序** —— 脚本检测到目标程序在运行会直接拒绝执行
 （运行时文件被占用，替换必然失败）。
+
+---
+
+## 配置化与安装目录
+
+镜像与安装目录都在 `ghupdate\config.json` 里改，不必动代码：
+
+```
+update-all.bat maa --show-config                            看看当前生效了什么（含每项来源）
+update-all.bat maa --install "D:\RL\MAA-v6.9.5-win-x64"     指定安装目录（校验通过后记住）
+update-all.bat maa --inspect "D:\RL"                        检查某目录并列出子目录候选
+update-all.bat maa --mirror https://其他镜像/                换镜像（可重复传多次）
+```
+
+安装目录是**手动指定**的，不做自动定位 —— 契约是「要么用你指的目录，要么明确报错，
+绝不静默回退到别处」。解析优先级：`--install` > 环境变量 > `config.json` > 交互询问。
+详见 [`ghupdate/README.md`](ghupdate/README.md)。
 
 ---
 
@@ -104,6 +124,7 @@ update-all.bat all          # 先 MAA 再 MaaEnd
 | `ghproxy/certs/` | **含私钥**（`ghmirror-ca.key` / `github.key`），且是机器本地的。用 `gen-certs.bat` 重新生成 |
 | `ghupdate/_cache/` | 下载缓存（实测约 315 MB） |
 | `ghupdate/_backup/` | 更新前备份（实测约 372 MB），回滚用，保留在本地即可 |
+| `ghupdate/config.json` | 本机配置（含个人安装路径），模板见 `config.example.json` |
 | `*.log` / `*.pid` / `__pycache__` / `ca_installed.flag` | 运行时产物 |
 
 ### 原有工作目录
@@ -114,8 +135,9 @@ update-all.bat all          # 先 MAA 再 MaaEnd
 
 ### 依赖外部镜像
 
-`ghupdate` 的下载通道依赖第三方镜像 `ghfast.top`，它可能限速或下线。
-镜像不可用时脚本会自动重试并回退直连（63 KB/s 兜底），不会静默失败。
+`ghupdate` 默认走第三方镜像 `ghfast.top`，它可能限速或下线。镜像现在是**可配置**的
+（`--mirror` 或 `config.json` 的 `mirror.prefixes`），全部失效时会自动重试并回退直连
+（63 KB/s 兜底），不会静默失败。
 
 ---
 

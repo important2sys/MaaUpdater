@@ -6,7 +6,7 @@ ghupdate 共享工具库 —— 零第三方依赖（只用 Python 标准库）�
 解压覆盖 -> 备份回滚」的能力，完全不改动系统（不装证书、不改 hosts、
 不写任何程序配置文件，只“读”配置用于版本探测）。
 
-设计基线见 D:\\RRL\\MAA-MaaEnd更新方案B细化.md
+设计基线见 docs\\MAA-MaaEnd更新方案B细化.md 与 docs\\ghupdate-可配置化与GUI规划.md
 """
 
 import ctypes
@@ -23,12 +23,21 @@ import urllib.error
 import urllib.request
 import zipfile
 
+# 保证 `import core.*` 在任意 cwd 下都能工作
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from core import config as _config  # noqa: E402
+from core import locate as _locate  # noqa: E402
+from core import mirror as _mirror  # noqa: E402
+
 # ----------------------------------------------------------------------------
 # 常量
 # ----------------------------------------------------------------------------
 
 #: GitHub 加速镜像前缀（路径式代理：<前缀><完整 github url>）。
-#: 2026-10-15 实测 13 个镜像中唯一可用者；官方 mirrors 已全部下线。
+#: 已被 core.mirror + config.json 取代（见 core/mirror.py），此处仅保留为兼容默认值。
 MIRROR_PREFIX = "https://ghfast.top/"
 
 UA = "Mozilla/5.0 (compatible; ghupdate/1.0)"
@@ -351,8 +360,138 @@ def process_running(exe_name):
         return False
 
 
+# ----------------------------------------------------------------------------
+# 配置与安装目录（实现见 core/config.py 与 core/locate.py）
+# ----------------------------------------------------------------------------
+
+def add_config_args(ap, marker):
+    """两个更新器共用的配置 / 安装目录类参数。marker 形如 'MAA.exe'。"""
+    ap.add_argument("--install", default="", metavar="DIR",
+                    help="安装目录（包含 %s 的那个文件夹）；校验通过后会被记住" % marker)
+    ap.add_argument("--no-save", action="store_true",
+                    help="配合 --install：只本次生效，不写入配置文件")
+    ap.add_argument("--config", default="", metavar="PATH",
+                    help="指定配置文件（默认 ghupdate\\config.json）")
+    ap.add_argument("--show-config", action="store_true",
+                    help="打印当前生效配置（含每项来源）后退出")
+    ap.add_argument("--mirror", action="append", default=[], metavar="URL",
+                    help="覆盖镜像前缀，可重复传多次形成候选列表")
+    ap.add_argument("--no-mirror", action="store_true",
+                    help="本次禁用镜像，改走 GitHub 直连")
+    ap.add_argument("--forget-install", nargs="?", const="all", default=None,
+                    choices=["all", "maa", "maaend"], metavar="{all,maa,maaend}",
+                    help="清除配置里已保存的安装路径（不带值 = all）")
+    ap.add_argument("--inspect", nargs="?", const="", default=None, metavar="DIR",
+                    help="检查目录是否为安装目录并列出子目录候选，不做任何改动")
+
+
+def setup(args, kind, version_of, title=""):
+    """载入配置 -> 应用 CLI 覆盖 -> 处理 show-config/forget-install/inspect
+    -> 解析安装目录 -> 打印标题。返回 (cfg, install)。需提前退出时直接 sys.exit()。
+    """
+    cfg = _config.load(getattr(args, "config", "") or "")
+
+    # ---- CLI 覆盖（优先级最高）----
+    if getattr(args, "mirror", None):
+        cfg.set("mirror.enabled", True, _config.SOURCE_CLI)
+        cfg.set("mirror.prefixes", list(args.mirror), _config.SOURCE_CLI)
+    if getattr(args, "no_mirror", False):
+        cfg.set("mirror.enabled", False, _config.SOURCE_CLI)
+    if getattr(args, "proxy", ""):
+        cfg.set("network.proxy", args.proxy, _config.SOURCE_CLI)
+    for flag, dotted in (("no_backup", "behavior.backup"),
+                         ("no_verify", "behavior.verify")):
+        if getattr(args, flag, False):
+            cfg.set(dotted, False, _config.SOURCE_CLI)
+    for flag, dotted in (("prune", "behavior.prune"),
+                         ("restart", "behavior.restart"),
+                         ("keep_residue", "behavior.keep_residue")):
+        if getattr(args, flag, False):
+            cfg.set(dotted, True, _config.SOURCE_CLI)
+
+    if getattr(args, "show_config", False):
+        log(_config.format_config(cfg))
+        sys.exit(0)
+
+    forget = getattr(args, "forget_install", None)
+    if forget:
+        targets = ["maa", "maaend"] if forget == "all" else [forget]
+        for item in targets:
+            cfg.set_install_path(item, "")
+        try:
+            cfg.save()
+        except OSError as exc:
+            die("写入配置失败：%s" % exc)
+        ok("已清除安装路径：%s（%s）" % ("、".join(targets), cfg.path))
+        sys.exit(0)
+
+    if getattr(args, "inspect", None) is not None:
+        target = args.inspect or cfg.install_path(kind)
+        sys.exit(_locate.inspect(kind, target, version_of=version_of, echo=log))
+
+    # ---- 安装目录（手动指定；绝不静默回退）----
+    allow_prompt = (not getattr(args, "yes", False)) and _locate.interactive_ok()
+    try:
+        install, source = _locate.resolve(
+            kind, cfg,
+            cli_install=getattr(args, "install", "") or "",
+            allow_prompt=allow_prompt,
+            version_of=version_of,
+        )
+    except _locate.LocateCancelled as exc:
+        log("已取消：%s" % exc)
+        sys.exit(0)
+    except _locate.LocateError as exc:
+        die(str(exc))
+
+    log("=" * 66)
+    log(" %s  |  %s" % (title or kind.upper(), install))
+    log("=" * 66)
+
+    # 只有用户明确指定过（命令行或现场输入）才记住，避免把默认值写进配置
+    if source in _locate.EXPLICIT_SOURCES and cfg.install_path(kind) != install:
+        if getattr(args, "no_save", False):
+            log("  （--no-save：本次不改动配置文件）")
+        else:
+            cfg.set_install_path(kind, install)
+            try:
+                cfg.save()
+                log("  已记住安装目录（%s）" % cfg.path)
+            except OSError as exc:
+                warn("无法写入配置文件：%s" % exc)
+
+    return cfg, install
+
+
+def build_download_urls(cfg, origin):
+    """按配置展开下载候选：镜像按序在前，直连兜底。"""
+    return _mirror.build_urls(
+        origin,
+        prefixes=cfg.mirror_prefixes,
+        enabled=cfg.mirror_enabled,
+        fallback_direct=cfg.fallback_direct,
+    )
+
+
+def download_asset(cfg, origin, dest, expected_size=None, proxy=None):
+    """按配置展开镜像候选并下载（镜像优先，直连兜底），日志里列出尝试顺序。"""
+    urls = build_download_urls(cfg, origin)
+    log("  %s" % _mirror.describe(urls))
+    for idx, url in enumerate(urls, 1):
+        log("    %d) %s" % (idx, short(url, 100)))
+    download(urls, dest, expected_size=expected_size, proxy=proxy,
+             retries=int(cfg.get("network.retries", 3) or 3))
+    return dest
+
+
 def autodetect_dir(root, pattern, marker):
-    """在 root 下按 glob 找含 marker 文件的目录（取名字最大的一个）。"""
+    """在 root 下按 glob 找含 marker 文件的目录（取名字最大的一个）。
+
+    注意：自 2026-10-15 起，两个更新器已改为**手动指定安装目录**
+    （见 core/locate.py），本函数不再被默认调用，仅作向后兼容保留。
+    其“按目录名排序取最大”的选法已被证实不可靠 —— 本机
+    MAA-v6.9.5-win-x64 目录里实际是 v6.19.0，名字会误导排序。
+    """
     hits = []
     for d in glob.glob(os.path.join(root, pattern)):
         if os.path.isdir(d) and os.path.isfile(os.path.join(d, marker)):

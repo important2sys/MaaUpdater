@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "mirror": {
+    "enabled": true,
+    "prefixes": [
+      "https://ghfast.top/"
+    ],
+    "fallback_direct": true
+  },
+  "install": {
+    "maa": {
+      "path": ""
+    },
+    "maaend": {
+      "path": ""
+    }
+  },
+  "locate": {
+    "parent_probe": true
+  },
+  "network": {
+    "proxy": "",
+    "timeout": 30,
+    "retries": 3
+  },
+  "behavior": {
+    "prune": false,
+    "restart": false,
+    "backup": true,
+    "verify": true,
+    "keep_residue": false
+  },
+  "ui": {
+    "language": "zh-CN"
+  }
+}

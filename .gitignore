@@ -15,6 +15,10 @@ ghproxy/certs/
 ghupdate/_cache/
 ghupdate/_backup/
 
+# 本机配置：含个人安装路径与镜像偏好，不入库（模板见 ghupdate/config.example.json）
+ghupdate/config.json
+ghupdate/config.json.tmp
+
 # 代理 / 更新器的运行时文件
 *.log
 *.pid
