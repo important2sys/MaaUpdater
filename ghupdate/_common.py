@@ -365,9 +365,16 @@ def process_running(exe_name):
     if not IS_WINDOWS:
         return False
     try:
+        # CREATE_NO_WINDOW 不能省：图形界面由 pythonw 启动，自身没有控制台，
+        # 若不显式禁止，Windows 会给 tasklist 这个控制台子进程新分配一个控制台 ——
+        # 表现为界面每检查一次，屏幕上就闪出一个空的 cmd 窗口。
+        kwargs = {}
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         out = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq %s" % exe_name, "/NH", "/FO", "CSV"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=25,
+            **kwargs
         )
         raw = (out.stdout or b"").lower()
         return exe_name.lower().encode("ascii", "ignore") in raw

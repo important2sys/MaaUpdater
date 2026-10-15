@@ -48,14 +48,26 @@ if not defined PY (
 
 if not defined PY goto :nopython
 
+if /i "%MODE%"=="--debug" goto :rundebug
+
+rem Normal mode: hand the GUI to the shell and return at once.
+rem
+rem Why not just "%PY%" "%APP%" here: double-clicking a .bat always gives that
+rem .bat a console window. Invoking pythonw directly would make cmd WAIT for the
+rem GUI to exit, so that empty black window would stay on screen for the whole
+rem session. `start` returns immediately -- this script and its console go away,
+rem the GUI keeps running. pythonw.exe is a GUI binary, so `start` gives it no
+rem console of its own; nothing is left to flash afterwards.
+start "" "%PY%" "%APP%"
+exit /b 0
+
+:rundebug
+rem Debug mode stays attached on purpose, so the console can show the output.
 "%PY%" "%APP%" %MODE%
 set "RC=%ERRORLEVEL%"
-
-if /i "%MODE%"=="--debug" (
-  echo.
-  echo [ghupdate] python exited with code %RC%
-  pause
-)
+echo.
+echo [ghupdate] python exited with code %RC%
+pause
 exit /b %RC%
 
 

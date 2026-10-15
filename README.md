@@ -91,8 +91,8 @@ MaaUpdaterBat\
 ### 图形界面（日常使用）
 
 双击项目根目录下的 **`MaaUpdater.bat`**。该脚本转发至
-`ghupdate\ghupdate-gui.bat`，后者会自动挑选一个可用的解释器并以 `pythonw` 启动，
-不显示控制台窗口。
+`ghupdate\ghupdate-gui.bat`，后者会自动挑选一个可用的解释器，随即以 `pythonw` 把
+界面交给系统 —— 启动器自身的控制台随即关闭，不会留下多余的窗口。
 
 界面等价入口位于 `ghupdate\`：
 
