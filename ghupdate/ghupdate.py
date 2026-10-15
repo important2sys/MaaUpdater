@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as C  # noqa: E402
 from core import config as cfgmod  # noqa: E402
+from core import events as _events  # noqa: E402
 from core import locate  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -262,8 +263,8 @@ def dispatch(args):
     return 2
 
 
-def main():
-    args = sys.argv[1:]
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else list(argv)
     if not args:
         return menu()
     rc = dispatch(args)
@@ -282,3 +283,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         C.log("\n已中断。")
         sys.exit(130)
+    except _events.UpdateError as exc:
+        sys.exit(exc.code)

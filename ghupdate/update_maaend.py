@@ -20,6 +20,7 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as C  # noqa: E402
+from core import events as _events  # noqa: E402
 
 KIND = "maaend"
 MARKER = "MaaEnd.exe"
@@ -55,7 +56,7 @@ def find_residue(install_dir):
     return sorted(glob.glob(pat))
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(
         description="MaaEnd 本体更新器（镜像可配置、安装目录手动指定）")
     C.add_config_args(ap, MARKER)
@@ -66,7 +67,7 @@ def main():
     ap.add_argument("--no-backup", action="store_true", help="跳过备份（不建议）")
     ap.add_argument("--no-verify", action="store_true", help="无官方摘要时仍继续（不建议）")
     ap.add_argument("--proxy", default="", help="可选：显式代理")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     here = os.path.dirname(os.path.abspath(__file__))
     cache_dir = os.path.join(here, "_cache")
@@ -225,3 +226,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         C.log("\n已中断。")
         sys.exit(130)
+    except _events.UpdateError as exc:
+        # die() 已经打印过 [x] 信息，这里只把异常转成退出码
+        sys.exit(exc.code)

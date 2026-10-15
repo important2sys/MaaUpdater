@@ -29,6 +29,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from core import config as _config  # noqa: E402
+from core import events as _events  # noqa: E402
 from core import locate as _locate  # noqa: E402
 from core import mirror as _mirror  # noqa: E402
 
@@ -52,6 +53,10 @@ PROTECTED_TOP_DIRS = {
 
 # ----------------------------------------------------------------------------
 # 输出
+#
+# 全部转发给全局 Reporter（core/events.py）。默认实现 ConsoleReporter 的
+# 输出格式与 P1 及以前逐字符一致；GUI 只需 set_reporter() 换掉实现即可，
+# 本模块与两个更新器无需任何改动。
 # ----------------------------------------------------------------------------
 
 def _init_console():
@@ -65,33 +70,39 @@ def _init_console():
 _init_console()
 
 
+def get_reporter():
+    """当前生效的 Reporter（默认 ConsoleReporter）。"""
+    return _events.get_reporter()
+
+
+def set_reporter(reporter):
+    """替换全局 Reporter（GUI 用），返回被替换掉的那个。"""
+    return _events.set_reporter(reporter)
+
+
 def log(msg=""):
-    sys.stdout.write(str(msg) + "\n")
-    sys.stdout.flush()
+    _events.get_reporter().log(msg)
 
 
 def warn(msg):
-    log("[!] " + str(msg))
+    _events.get_reporter().warn(msg)
 
 
 def ok(msg):
-    log("[v] " + str(msg))
+    _events.get_reporter().ok(msg)
 
 
 def die(msg, code=1):
-    log("[x] " + str(msg))
-    sys.exit(code)
+    """致命错误：抛 UpdateError，不再直接结束进程。
+
+    终端下输出与旧版完全一致（先打印 ``[x] msg``）；调用方需在顶层
+    捕获并转换为退出码 —— 见两个更新器的 ``__main__``。
+    """
+    _events.get_reporter().fail(msg, code)
 
 
 def human(n):
-    try:
-        n = float(n)
-    except Exception:
-        return str(n)
-    for u in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024 or u == "TB":
-            return ("%d %s" % (int(n), u)) if u == "B" else ("%.2f %s" % (n, u))
-        n /= 1024.0
+    return _events.human(n)
 
 
 def short(url, n=88):
@@ -196,13 +207,9 @@ def download(urls, dest, expected_size=None, timeout=90, proxy=None,
                             shown = done
                             el = max(time.time() - t0, 1e-3)
                             spd = (done - have) / el
-                            sys.stdout.write("\r  %5.1f%%  %s / %s  %s/s      " % (
-                                done * 100.0 / expected_size, human(done),
-                                human(expected_size), human(spd)))
-                            sys.stdout.flush()
+                            _events.get_reporter().progress(done, expected_size, spd)
                 r.close()
-                sys.stdout.write("\r" + " " * 72 + "\r")
-                sys.stdout.flush()
+                _events.get_reporter().progress_end()
                 got = os.path.getsize(part)
                 if expected_size and got != expected_size:
                     raise IOError("大小不符：实收 %d，应为 %d" % (got, expected_size))
@@ -211,7 +218,7 @@ def download(urls, dest, expected_size=None, timeout=90, proxy=None,
                 return dest
             except Exception as e:  # noqa: BLE001
                 last_err = e
-                sys.stdout.write("\r" + " " * 72 + "\r")
+                _events.get_reporter().progress_end()
                 warn("失败：%s" % e)
                 if attempt < retries:
                     time.sleep(retry_wait if retry_wait is not None else min(2 ** attempt, 8))
