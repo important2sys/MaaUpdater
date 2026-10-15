@@ -11,7 +11,7 @@
 所以**发布包的结构与仓库结构故意不一样**：
 
     MaaUpdaterBat\\
-    ├── 启动更新器.bat        <- 唯一入口，双击就完事
+    ├── MaaUpdater.bat        <- 唯一入口，双击就完事
     ├── 使用说明.txt
     ├── 安全提醒与免责声明.md
     ├── README.md
@@ -54,7 +54,7 @@ TOP = "MaaUpdaterBat"
 # 没列在这里的东西一律不进包（.git / tools / .gitattributes / .gitignore 等）
 # ---------------------------------------------------------------------------
 LAYOUT = [
-    ("file", "启动更新器.bat", "启动更新器.bat"),
+    ("file", "MaaUpdater.bat", "MaaUpdater.bat"),
     ("file", "使用说明.txt", "使用说明.txt"),
     ("file", "安全提醒与免责声明.md", "安全提醒与免责声明.md"),
     ("file", "README.md", "README.md"),
@@ -100,7 +100,7 @@ FORBIDDEN_IN_ZIP = (
 
 # 摘要里给顶层条目加的说明（键是包内顶层条目名）
 TOP_NOTES = {
-    "启动更新器.bat": "<-- 双击这个就行",
+    "MaaUpdater.bat": "<-- 双击这个就行",
     "ghupdate": "主程序（界面 + 命令行）",
     "可选": "平时用不到，删了也不影响使用",
 }
@@ -110,7 +110,7 @@ EXPAND_DIRS = ("可选",)
 
 # 摘要里包根条目的排列顺序：入口永远排第一，用户扫一眼就知道点哪个。
 # 没列在这里的按名字排在后面。
-ROOT_ORDER = ["启动更新器.bat", "使用说明.txt", "安全提醒与免责声明.md",
+ROOT_ORDER = ["MaaUpdater.bat", "使用说明.txt", "安全提醒与免责声明.md",
               "README.md", "ghupdate", "可选"]
 
 
