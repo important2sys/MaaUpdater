@@ -5,11 +5,14 @@
 自动定位最怕“猜错了还默默更新错副本”，所以这里把决策权交回用户，
 代价是失败时必须把“试过哪些、为什么不行、你可能想用哪个”讲清楚。
 
-解析优先级（命中即用）：
-  1. --install PATH            本次生效，校验通过后写回配置
-  2. GHUPDATE_INSTALL_MAA(_MAAEND)  环境变量
-  3. config.json 的 install.<kind>.path   持久生效
+解析优先级：
+  1. --install PATH                显式；本次生效，校验通过后写回配置
+  2. GHUPDATE_INSTALL_MAA(_MAAEND) 显式；环境变量
+  3. config.json 的 install.<kind>.path   隐式默认值，失效时可被交互输入覆盖
   4. 交互式询问（输入合法则写回配置）；非交互 / -y 下直接报错
+
+1 和 2 是**显式来源**：一旦给出就以它为准，校验不过直接报错，
+绝不回退到 config.json 或交互输入（唯一例外是“经用户确认”的一层子目录救回）。
 
 版本探测通过 version_of 回调注入，本模块不依赖 _common，便于后续重构。
 """
@@ -222,6 +225,70 @@ def _error_text(kind, tried):
     return "\n".join(lines)
 
 
+def _rescue_by_child(kind, raw, cfg, allow_prompt, version_of, prompt, tried):
+    """父目录容错：在 raw 的**直接子目录**里找像样的安装目录。
+
+    返回 (路径, 来源) 或 None。**只有用户确认过才会返回**；
+    非交互模式下一律不自动采用（只记入 tried）。
+    """
+    if not cfg.parent_probe:
+        return None
+    spec = KINDS[kind]
+    parent = normalize(raw)
+    hits = probe_children(kind, parent, version_of)
+    if not hits:
+        return None
+    if len(hits) > 1:
+        if allow_prompt:
+            chosen = prompt.ask_choice(
+                "  %s 不是 %s 安装目录本身，但它的子目录里有多个候选："
+                % (parent, spec["label"]), hits)
+            if chosen:
+                return chosen, "子目录选择"
+        for path, _ver in hits:
+            tried.append((path, "子目录候选", "非交互模式，未自动采用"))
+        return None
+    path, ver = hits[0]
+    if not allow_prompt:
+        tried.append((path, "子目录候选", "非交互模式，未自动采用"))
+        return None
+    question = ("  你指定的 %s 不是 %s 安装目录本身。\n"
+                "  但在它下面找到：%s%s\n  用这个吗？"
+                % (parent, spec["label"], path, ("（%s）" % ver) if ver else ""))
+    if prompt.ask_yes_no(question, default=True):
+        return path, "子目录确认"
+    tried.append((path, "子目录候选", "用户未采纳"))
+    return None
+
+
+def _explicit_error_text(kind, path, source, why, tried):
+    """显式指定（--install / 环境变量）不可用时的报错文案。
+
+    必须让用户看清三件事：指到了哪、为什么不行、怎么改回已保存的目录。
+    """
+    spec = KINDS[kind]
+    lines = ["你指定的 %s 安装目录不可用：" % spec["label"]]
+    lines.append("      %s   （来自 %s）" % (path or "(空路径)", source))
+    lines.append("    —— %s" % why)
+    content = describe_dir(path)
+    if content:
+        lines.append("")
+        lines.append("    该目录内容：%s" % content)
+    cands = [t for t in tried if t[1] == "子目录候选"]
+    if cands:
+        lines.append("")
+        lines.append("    它下面的候选：")
+        for cpath, _src, reason in cands:
+            lines.append("      - %s   （%s）" % (cpath, reason))
+    lines.append("")
+    lines.append("    %s 不会改用 config.json 里保存的目录。" % source)
+    if source == "--install":
+        lines.append("    要改用已保存的目录，请去掉 --install 后重新运行。")
+    else:
+        lines.append("    要改用已保存的目录，请清除 %s 后重新运行。" % source)
+    return "\n".join(lines)
+
+
 def resolve(kind, cfg, cli_install="", allow_prompt=True, version_of=None,
             prompt=None, echo=None):
     """确定安装目录。成功返回 (路径, 来源说明)，失败抛 LocateError / LocateCancelled。"""
@@ -229,53 +296,43 @@ def resolve(kind, cfg, cli_install="", allow_prompt=True, version_of=None,
     echo = echo or prompt.echo
     spec = KINDS[kind]
 
-    # ---- 1~3. 显式来源，按优先级逐个校验 ----
-    sources = []
+    # ---- 1~2. 显式来源：--install > 环境变量 ----
+    # 契约：显式指定过就以它为准。校验不过直接报错，绝不回退到其他来源。
+    explicit = []
     if cli_install:
-        sources.append((cli_install, "--install"))
+        explicit.append((cli_install, "--install"))
     env_name = "GHUPDATE_INSTALL_%s" % kind.upper()
-    if os.environ.get(env_name):
-        sources.append((os.environ.get(env_name), "环境变量 " + env_name))
-    cfg_raw = cfg.install_path(kind)
-    if cfg_raw:
-        sources.append((cfg_raw, "config.json"))
+    env_val = os.environ.get(env_name)
+    if env_val:
+        explicit.append((env_val, "环境变量 " + env_name))
 
     tried = []
-    for raw, source in sources:
+    if explicit:
+        raw, source = explicit[0]
         path = normalize(raw)
         good, why = validate(kind, path)
         if good:
             return path, source
+        # 只允许“经用户确认”的一层子目录救回；不做任何静默替换。
+        rescued = _rescue_by_child(kind, raw, cfg, allow_prompt, version_of,
+                                   prompt, tried)
+        if rescued:
+            return rescued
         tried.append((path or str(raw), source, why))
+        raise LocateError(_explicit_error_text(kind, path, source, why, tried))
 
-    # ---- 3.5 一层子目录容错（只看直接子目录）----
-    if cfg.parent_probe:
-        for raw, source in sources:
-            parent = normalize(raw)
-            hits = probe_children(kind, parent, version_of)
-            if not hits:
-                continue
-            if len(hits) > 1:
-                if allow_prompt:
-                    chosen = prompt.ask_choice(
-                        "  %s 不是 %s 安装目录本身，但它的子目录里有多个候选：" % (parent, spec["label"]),
-                        hits)
-                    if chosen:
-                        return chosen, "子目录选择"
-                for path, ver in hits:
-                    tried.append((path, "子目录候选", "非交互模式，未自动采用"))
-                continue
-            path, ver = hits[0]
-            if allow_prompt:
-                question = ("  你指定的 %s 不是 %s 安装目录本身。\n"
-                            "  但在它下面找到：%s%s\n  用这个吗？"
-                            % (parent, spec["label"], path,
-                               ("（%s）" % ver) if ver else ""))
-                if prompt.ask_yes_no(question, default=True):
-                    return path, "子目录确认"
-                tried.append((path, "子目录候选", "用户未采纳"))
-            else:
-                tried.append((path, "子目录候选", "非交互模式，未自动采用"))
+    # ---- 3. config.json（隐式默认值；失效时可被交互输入覆盖）----
+    cfg_raw = cfg.install_path(kind)
+    if cfg_raw:
+        path = normalize(cfg_raw)
+        good, why = validate(kind, path)
+        if good:
+            return path, "config.json"
+        tried.append((path or str(cfg_raw), "config.json", why))
+        rescued = _rescue_by_child(kind, cfg_raw, cfg, allow_prompt, version_of,
+                                   prompt, tried)
+        if rescued:
+            return rescued
 
     # ---- 4. 交互式询问 ----
     if allow_prompt:

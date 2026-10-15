@@ -1,9 +1,11 @@
 # ghupdate 可视化界面（GUI）开发规划
 
-> 版本：**v1**（2026-10-15 14:50）
+> 版本：**v2**（2026-10-15 15:05）
 > 前置：P1（镜像可配置化 + 安装目录手动指定）**已交付并推送**（`e2307d1`）
+> P2（事件解耦）**已交付并推送**（`79a3768`）；P2 后发现并修复了 `locate.resolve()`
+> 静默回退缺陷（见附录 B.4）—— **P3a 已无阻塞项**。
 > 涉及代码：`D:\RRL\MaaUpdaterBat\ghupdate\`
-> 状态：**规划中，未改动任何代码**
+> 状态：**P2 完成，P3a 待开工**
 
 ---
 
@@ -252,12 +254,13 @@ ghupdate/
 | 阶段 | 内容 | 规模 | 出口条件 |
 |---|---|---|---|
 | **P2 解耦** ✅ **已完成** | `core/events.py` + 转发层 + `main(argv)` + 进度走 Reporter | 中 | **已满足**，实施记录见附录 B |
+| **P2.1 缺陷修复** ✅ **已完成** | `locate.resolve()` 显式来源不再静默回退；新增 `_rescue_by_child()` / `_explicit_error_text()` | 小 | **已满足**，21/21 契约用例 + 4/5 组 CLI 逐字节一致，见附录 B.4 |
 | **P3a 骨架** | `ghupdate-gui.bat` + `gui/app.py` 起窗口；两张卡片显示当前版本（只读，调 core） | 中 | 双击 bat 出窗口，版本号正确，关窗进程干净退出 |
 | **P3b 功能** | 检查更新 + 执行更新 + 实时进度 + 日志流 + 确认弹窗 | 大 | 真机完成一次真实更新（可用 MaaEnd 或旧包验证） |
 | **P3c 设置** | 设置面板读写 `config.json`；目录浏览 | 中 | 改镜像/目录后立即生效并写回 |
 | **P4 打磨** | DPI 适配、图标、深色适配、取消按钮、完成通知 | 小 | 高 DPI 屏不模糊；取消能中断下载 |
 
-**P2 是唯一的前置阻塞项**，P3a 之后各阶段可独立交付。
+**P1 / P2 / P2.1 均已交付，阻塞项已全部消除**，P3a 起各阶段可独立交付。
 
 ---
 
@@ -405,30 +408,80 @@ D:\RRL\MaaUpdaterBat\                  git 仓库，可整体拷贝到别的机�
    实施时判断这些逻辑已被同一套 Reporter 覆盖，搬家只是形式整齐，收益低于
    改动风险。真正的分层界线是「是否依赖界面」，而不是文件放在哪个目录。
 
-## B.4 待修缺陷（本次发现，**尚未修复**）
+## B.4 已修缺陷：`locate.resolve()` 静默回退（P2 后发现并修复）
 
-**`locate.resolve()` 在显式来源校验失败时会静默回退到 `config.json`。**
+**症状**：显式来源（`--install` / 环境变量）校验失败时不报错，继续往下试，
+最终被 `config.json` 里的另一个目录「兜住」。
 
 ```python
-# core/locate.py:243-249
-for raw, source in sources:          # sources = [--install, 环境变量, config.json]
+# 修复前 core/locate.py
+sources = [--install, 环境变量, config.json]   # 三个来源拼成一个列表
+for raw, source in sources:
     path = normalize(raw)
     good, why = validate(kind, path)
     if good:
         return path, source          # 第一个通过就返回 —— 于是 config 兜住了
-    tried.append(...)
 ```
 
-实测：
+实测（修复前）：
 
 ```
-cli_install='D:/no-such-dir-xyz'   ->   D:\RL\MAA-v6.9.5-win-x64   [config.json]
+$ update_maa.py --install "D:/no-such-dir-xyz" --check
+（不报错，实际更新的是 D:\RL\MAA-v6.9.5-win-x64，来自 config.json）  exit=0
 ```
 
 用户明明用 `--install` 指定了目录，程序发现它不对却**不报错**，默默拿
-`config.json` 里另一个目录顶替。这违反 P1 的核心契约（「要么用你指的目录，
-要么明确报错 —— 绝不静默回退」），风险是用户以为在更新 A 副本、实际更新了 B。
+`config.json` 里另一个目录顶替。违反 P1 的核心契约（「要么用你指的目录，
+要么明确报错 —— 绝不静默回退」），风险是用户以为在更新 A 副本、实际动了 B 副本。
 
-修法（待确认）：**显式来源（`--install` / 环境变量）校验失败立即抛 `LocateError`**，
-不再继续往下试；`config.json` 作为隐式默认值仍可被交互式输入覆盖。
-注意这是**行为变更** —— 会让 `--install 错目录` 从「静默用 config」变成「报错退出」。
+**修复**：把来源拆成「显式」与「隐式」两类。
+
+| 来源 | 类别 | 校验失败时的行为 |
+|---|---|---|
+| `--install` | 显式 | **立即抛 `LocateError`**，不再往下试 |
+| `GHUPDATE_INSTALL_*` | 显式 | 同上 |
+| `config.json` | 隐式默认值 | 记入 `tried`，继续走一层子目录容错 → 交互询问 |
+
+显式来源唯一的「救回」机会是**经用户确认**的一层子目录容错（`_rescue_by_child`）：
+交互模式下问一句「用下面那个吗」，非交互模式一律不采用。
+
+修复后（同一命令）：
+
+```
+[x] 你指定的 MAA 安装目录不可用：
+      D:\RRL\MaaUpdaterBat   （来自 --install）
+    —— 目录里没有 MAA.exe
+
+    该目录内容：.git\、docs\、ghproxy\、ghupdate\、.gitattributes、.gitignore、README.md
+
+    --install 不会改用 config.json 里保存的目录。
+    要改用已保存的目录，请去掉 --install 后重新运行。
+exit=1
+```
+
+新增两个内部函数：`_rescue_by_child()`（父目录容错，显式与隐式路径共用）与
+`_explicit_error_text()`（显式来源的报错文案）。
+
+### B.4.1 验证
+
+`core/locate.py` 契约用例 **21/21 通过**：
+
+- 显式来源失败必须报错，且**不回退 config**（`--install` 与环境变量各一组）
+- 报错文案含来源、原因、目录内容、改回方式
+- 父目录 + 非交互 → 报错并列出候选；+ 交互确认 → 采用子目录；+ 交互否认 → 报错
+- `config.json` 隐式路径失效时，交互输入仍可覆盖
+- `parent_probe: false` 时无候选段
+- 路径规范化（引号 / 正斜杠 / 尾斜杠 / 直接填 exe）
+
+CLI 端到端（与 HEAD 版逐字节对比，脚本目录前缀已归一化）：
+
+| 组 | 命令 | 结果 |
+|---|---|---|
+| 1 | `update_maa.py --check --no-save` | SAME |
+| 2 | `update_maaend.py --check --no-save` | SAME |
+| 3 | `update_maa.py --show-config` | SAME |
+| 4 | `update_maa.py -y --install <错目录> --check` | **DIFF（预期的行为变更）** |
+| 5 | `ghupdate.py`（菜单渲染） | SAME |
+
+第 4 组由 `exit=0`（静默用 config）变为 `exit=1`（报错），正是本次修复目标；
+其余四组输出逐字节未变。

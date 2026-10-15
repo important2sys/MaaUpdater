@@ -79,14 +79,20 @@ update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
 自动探测最怕「猜错了还默默更新到错误副本」，所以决策权交回给你，代价是失败时
 必须把「试过哪些、为什么不行、你可能想用哪个」讲清楚。
 
-**解析优先级（命中即用）**
+**解析优先级**
 
-| 级别 | 来源 | 说明 |
-|---|---|---|
-| 1 | `--install PATH` | 命令行，最高优先级 |
-| 2 | `GHUPDATE_INSTALL_MAA` / `GHUPDATE_INSTALL_MAAEND` | 环境变量 |
-| 3 | `config.json` → `install.maa.path` / `install.maaend.path` | 持久生效 |
-| 4 | 交互式询问 | 控制台里问你；输入合法则写回配置 |
+| 级别 | 来源 | 类别 | 说明 |
+|---|---|---|---|
+| 1 | `--install PATH` | **显式** | 命令行，最高优先级 |
+| 2 | `GHUPDATE_INSTALL_MAA` / `GHUPDATE_INSTALL_MAAEND` | **显式** | 环境变量 |
+| 3 | `config.json` → `install.maa.path` / `install.maaend.path` | 隐式默认值 | 持久生效 |
+| 4 | 交互式询问 | — | 控制台里问你；输入合法则写回配置 |
+
+**显式来源一旦给出就以它为准**：`--install` 或环境变量指的目录若不可用，直接报错
+退出，**不会退回去用 `config.json` 里保存的目录** —— 否则你以为在更新 A，实际动了 B。
+要改回已保存的目录，去掉 `--install`（或清除环境变量）重新运行即可。
+
+`config.json` 是**隐式默认值**，失效时允许被交互输入覆盖。
 
 **路径会被自动规范化**（这些写法都能认）：
 
@@ -96,7 +102,8 @@ update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
 | `D:/RL/MAA-v6.9.5-win-x64/` | 正斜杠、尾部反斜杠 |
 | `D:\RL\MAA-v6.9.5-win-x64\MAA.exe` | 直接填 exe 文件 → 取所在目录 |
 | `%USERPROFILE%\Desktop\MAA` | 展开环境变量 |
-| `D:\Rel` | 目录不存在 → 报错 |
+| `D:\RL`（父目录） | 一层容错：问「用下面那个吗」；非交互时直接报错 |
+| `D:\RRL\MaaUpdaterBat` | 不是安装目录 → 报错，并列出目录内容供你判断 |
 
 **一层子目录容错**（`locate.parent_probe`，默认开、可关）：
 若你给的目录本身不是安装目录，但它的**直接子目录**里有唯一一个像样的候选，
