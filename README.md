@@ -16,6 +16,8 @@ MaaEnd 日志里明写自己是「直连（无代理）」，两次下载分别�
 
 ```
 MaaUpdaterBat\
+├── 启动更新器.bat          ★ 唯一入口：双击它就行
+├── 使用说明.txt              给最终用户看的极简说明（发布包里会带上）
 ├── ghupdate\              方案 B：独立更新器（推荐，零系统改动）
 │   ├── update-all.bat         命令行入口，双击即用（纯 ASCII）
 │   ├── ghupdate-gui.bat       图形界面入口（自动挑带 tkinter 的解释器）
@@ -29,6 +31,8 @@ MaaUpdaterBat\
 │   ├── gui\                   图形界面（Tkinter：app / reporter / settings / theme）
 │   ├── config.example.json    配置模板（config.json 是本机配置，不入库）
 │   └── README.md              详细说明
+├── tools\
+│   └── pack.py                打包脚本：打出「用户视角」的发布 zip（输出到 dist\）
 ├── ghproxy\               方案 A′：本地拦截代理（需临时装 CA）
 │   ├── ghproxy.py             纯标准库 MITM 代理（127.0.0.1:8899）
 │   ├── ghproxy-ctl.bat        start / stop / status / install-ca / remove-ca
@@ -67,7 +71,12 @@ MaaUpdaterBat\
 
 ## 快速开始
 
-**图形界面**（日常用）：
+**最省事的方式：双击项目根目录下的 `启动更新器.bat`。**
+
+界面直接打开，不用管内部结构。它是个薄转发 —— 真正干活的是
+`ghupdate\ghupdate-gui.bat`，后者会自动挑一个能 `import tkinter` 的解释器。
+
+**图形界面**（等价入口，位于 `ghupdate\`）：
 
 ```
 cd ghupdate
@@ -112,6 +121,46 @@ update-all.bat maa --mirror https://其他镜像/                换镜像（可
 安装目录是**手动指定**的，不做自动定位 —— 契约是「要么用你指的目录，要么明确报错，
 绝不静默回退到别处」。解析优先级：`--install` > 环境变量 > `config.json` > 交互询问。
 详见 [`ghupdate/README.md`](ghupdate/README.md)。
+
+---
+
+## 打包分发
+
+```
+python tools\pack.py                    # -> dist\MaaUpdaterBat-YYYYMMDD.zip
+python tools\pack.py --list             # 只列出会打包哪些文件，不写 zip
+python tools\pack.py --no-config        # 发给别人时用（不含本机安装路径）
+python tools\pack.py --out D:\x.zip     # 自定义输出位置
+```
+
+发布包的结构**故意不同于仓库结构**。仓库是给开发者看的，根目录并列着
+`ghupdate` / `ghproxy` / `docs` 和一堆 VCS 文件；包只留用户需要的东西：
+
+```
+MaaUpdaterBat\
+├── 启动更新器.bat          <-- 唯一入口，双击这个就行
+├── 使用说明.txt
+├── README.md
+├── ghupdate\              主程序（21 个文件）
+└── 可选\                  平时用不到，删了也不影响使用
+    ├── docs\              排查与设计文档（7 个文件）
+    └── ghproxy\           备用方案（7 个文件）
+```
+
+排除规则与 `.gitignore` 对齐（运行期产物、私钥、本机缓存），另加 VCS 元数据
+与打包脚本自身。`ghupdate\config.json` 默认**打进包里**（自用 / 换机时省得
+重新指定安装目录），`--no-config` 可去掉。
+
+打包完成后脚本会**回读 zip 自检**三件「出错后极难排查」的事：换行符、中文
+文件名编码、是否混进敏感文件。
+
+> **为什么盯着 CRLF**：cmd.exe 读 LF-only 的 `.bat` 会出现行边界解析错位，
+> 症状是把 `rem` 注释里的单词当成命令执行 —— 满屏「不是内部或外部命令」，
+> 可脚本本身又「看起来能跑」。本仓库的 `ghupdate-gui.bat` 与
+> `ghupdate-gui-debug.bat` 之前就是这个状态：`.gitattributes` 声明了
+> `eol=crlf`，但工作区文件是在 Windows 上以 LF 直接写入的，而 git 只在检出
+> 时才应用 eol，所以一直没被纠正。现已统一为 CRLF，打包脚本每次也会兜底
+> 重写一遍。
 
 ---
 
@@ -169,6 +218,7 @@ update-all.bat maa --mirror https://其他镜像/                换镜像（可
 | `ghupdate/_backup/` | 更新前备份（实测约 372 MB），回滚用，保留在本地即可 |
 | `ghupdate/config.json` | 本机配置（含个人安装路径），模板见 `config.example.json` |
 | `*.log` / `*.pid` / `__pycache__` / `ca_installed.flag` | 运行时产物 |
+| `dist/` | 打包产物，随时可用 `tools\pack.py` 重新生成 |
 
 ### 原有工作目录
 
