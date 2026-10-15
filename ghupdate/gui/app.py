@@ -40,6 +40,7 @@ from core import events, locate
 from gui import reporter as gui_reporter
 from gui import settings as gui_settings
 from gui import theme
+from update_maa_res import read_local_version as read_res_version
 
 APP_TITLE = "MAA / MaaEnd 更新器"
 CRASH_LOG = os.path.join(_GH, "gui-error.log")
@@ -55,6 +56,12 @@ PROGRAMS = (
     ("maa", "MAA", "MAA.exe"),
     ("maaend", "MaaEnd", "MaaEnd.exe"),
 )
+
+#: 哪些程序额外有「资源」这一层（资源就在 MAA 安装目录下的 resource\）
+RESOURCE_KINDS = ("maa",)
+
+#: 任务模式的界面用语
+MODE_LABELS = {"check": "检查更新", "update": "开始更新", "resource": "更新资源"}
 
 
 # ---------------------------------------------------------------------------
@@ -158,56 +165,83 @@ class Tooltip:
 class ProgramCard:
     """一张程序卡片：名称 / 状态 / 安装目录 / 版本行 / 检查·更新·打开目录。"""
 
-    def __init__(self, parent, app, kind, label, marker):
+    def __init__(self, parent, app, kind, label, marker, has_resource=False):
         self.app = app
         self.kind = kind
         self.label = label
         self.marker = marker
+        self.has_resource = bool(has_resource)
         self.cur = ""
         self.latest = ""
+        self.res_local = ""
+        self.res_remote = ""
+        #: 综合徽章的两个来源（unknown / latest / update / failed）
+        self.bin_state = "unknown"
+        self.res_state = "unknown"
+        self.install_ok = False
+        self.path = ""
 
         fonts = app.fonts
         self.frame = ttk.Frame(parent, style="Card.TFrame", padding=14)
         self.frame.columnconfigure(0, weight=1)
+        row = 0
 
-        # ---- 第一行：名称 + 状态徽章 ----
+        # ---- 名称 + 状态徽章 ----
         top = ttk.Frame(self.frame, style="Card.TFrame")
-        top.grid(row=0, column=0, sticky="we")
+        top.grid(row=row, column=0, sticky="we")
+        row += 1
         top.columnconfigure(0, weight=1)
         ttk.Label(top, text=label, style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")
         # 徽章用 tk.Label —— ttk.Label 改背景色要配 style，得不偿失
         self.badge = tk.Label(top, text="", font=fonts.badge, padx=8, pady=1)
         self.badge.grid(row=0, column=1, sticky="e")
 
-        # ---- 第二行：安装目录 ----
+        # ---- 安装目录 ----
         self.lbl_path = ttk.Label(self.frame, text="", style="CardPath.TLabel")
-        self.lbl_path.grid(row=1, column=0, sticky="we", pady=(6, 0))
+        self.lbl_path.grid(row=row, column=0, sticky="we", pady=(6, 0))
+        row += 1
         self.tip = Tooltip(self.lbl_path, "")
 
-        # ---- 第三行：版本 ----
+        # ---- 程序版本 ----
         self.lbl_ver = ttk.Label(self.frame, text="", style="CardVer.TLabel")
-        self.lbl_ver.grid(row=2, column=0, sticky="w", pady=(4, 0))
+        self.lbl_ver.grid(row=row, column=0, sticky="w", pady=(4, 0))
+        row += 1
 
-        # ---- 第四行：提示文字 ----
+        # ---- 资源版本（仅 MAA）----
+        self.lbl_res = None
+        if self.has_resource:
+            self.lbl_res = ttk.Label(self.frame, text="", style="CardRes.TLabel")
+            self.lbl_res.grid(row=row, column=0, sticky="w", pady=(2, 0))
+            row += 1
+
+        # ---- 提示文字 ----
         self.lbl_note = ttk.Label(self.frame, text="", style="CardNote.TLabel")
-        self.lbl_note.grid(row=3, column=0, sticky="w", pady=(2, 0))
+        self.lbl_note.grid(row=row, column=0, sticky="w", pady=(2, 0))
+        row += 1
 
-        # ---- 第五行：按钮 ----
+        # ---- 按钮 ----
         bar = ttk.Frame(self.frame, style="Card.TFrame")
-        bar.grid(row=4, column=0, sticky="we", pady=(10, 0))
-        bar.columnconfigure(2, weight=1)
-        self.btn_check = ttk.Button(bar, text="检查更新", command=lambda: app.start_task(kind, "check"))
+        bar.grid(row=row, column=0, sticky="we", pady=(10, 0))
+        bar.columnconfigure(3, weight=1)
+        self.btn_check = ttk.Button(bar, text="检查更新",
+                                    command=lambda: app.start_task(kind, "check"))
         self.btn_check.grid(row=0, column=0)
         self.btn_update = ttk.Button(bar, text="立即更新", style="Accent.TButton",
                                      command=lambda: app.start_task(kind, "update"))
         self.btn_update.grid(row=0, column=1, padx=(6, 0))
+        self.btn_res = None
+        if self.has_resource:
+            self.btn_res = ttk.Button(bar, text="更新资源",
+                                      command=lambda: app.start_task(kind, "resource"))
+            self.btn_res.grid(row=0, column=2, padx=(6, 0))
         self.btn_open = ttk.Button(bar, text="打开目录", style="Tiny.TButton",
                                    command=self._open_dir)
-        self.btn_open.grid(row=0, column=3, sticky="e")
+        self.btn_open.grid(row=0, column=4, sticky="e")
 
         self.set_status("unknown")
         self.set_install("")
         self._render_versions()
+        self._render_resource()
 
     # -- 状态 ---------------------------------------------------------------
 
@@ -230,15 +264,36 @@ class ProgramCard:
     def set_note(self, text):
         self.lbl_note.configure(text=str(text or ""))
 
+    def set_resource(self, local=None, remote=None):
+        """更新资源行。None = 该项保持原值（remote 传空串表示清除「最新」）。"""
+        if local is not None:
+            self.res_local = local
+        if remote is not None:
+            self.res_remote = remote
+        self._render_resource()
+
     def set_enabled(self, enabled):
         state = "normal" if enabled else "disabled"
-        self.btn_check.configure(state=state)
-        self.btn_update.configure(state=state)
+        for btn in (self.btn_check, self.btn_update, self.btn_res):
+            if btn is not None:
+                btn.configure(state=state)
 
     def _render_versions(self):
         cur = self.cur or "?"
         latest = self.latest or "?"
-        self.lbl_ver.configure(text="当前 %s            最新 %s" % (cur, latest))
+        self.lbl_ver.configure(text="程序 %s            最新 %s" % (cur, latest))
+
+    def _render_resource(self):
+        if self.lbl_res is None:
+            return
+        cur = self.res_local or "?"
+        if not self.res_remote:
+            text = "资源  %s" % cur
+        elif self.res_local and self.res_local == self.res_remote:
+            text = "资源  %s    已是最新" % cur
+        else:
+            text = "资源  %s  →  %s" % (cur, self.res_remote)
+        self.lbl_res.configure(text=text)
 
     def _open_dir(self):
         if not self.path or not open_folder(self.path):
@@ -258,7 +313,7 @@ class App:
         self.root = tk.Tk()
         self.root.title(APP_TITLE)
         self.root.configure(bg=theme.BG)
-        self.root.minsize(700, 540)
+        self.root.minsize(700, 560)
         self.root.geometry("%dx%d" % (int(theme.BASE_W * self.scale),
                                       int(theme.BASE_H * self.scale)))
 
@@ -275,6 +330,7 @@ class App:
         self.cfg = cfgmod.load("")
         self.proxy = self.cfg.proxy or None
         self.channel = str(self.cfg.get("channel", "stable") or "stable")
+        self.timeout = int(self.cfg.get("network.timeout", 30) or 30)
 
         self._build()
         self._refresh_header()
@@ -304,7 +360,8 @@ class App:
         cards.grid(row=1, column=0, sticky="we")
         cards.columnconfigure(0, weight=1)
         for idx, (kind, label, marker) in enumerate(PROGRAMS):
-            card = ProgramCard(cards, self, kind, label, marker)
+            card = ProgramCard(cards, self, kind, label, marker,
+                               has_resource=(kind in RESOURCE_KINDS))
             card.frame.grid(row=idx, column=0, sticky="we", pady=(0, 8))
             self.cards[kind] = card
 
@@ -383,17 +440,27 @@ class App:
         card = self.cards[kind]
         install = self.cfg.install_path(kind)
         card.set_install(install)
-        card.set_status("unknown")
         card.set_versions(cur="", latest="")
+        if card.has_resource:
+            card.set_resource(local="", remote="")
+        card.bin_state = "unknown"
+        card.res_state = "unknown"
+        card.install_ok = False
         if not install:
+            card.set_status("unknown")
             card.set_note("还没有指定安装目录 —— 点右下角「设置…」选一个")
             return
         good, why = locate.validate(kind, install)
         if not good:
+            card.set_status("unknown")
             card.set_note("目录不可用：%s" % why)
             return
+        card.install_ok = True
+        card.set_status("unknown")
         card.set_note("")
         card.set_versions(cur=self.local_version(kind, install))
+        if card.has_resource:
+            card.set_resource(local=read_res_version(install))
 
     @staticmethod
     def local_version(kind, install):
@@ -437,29 +504,33 @@ class App:
             argv = ["--install", install, "--no-save"]
             if kind == "maa":
                 argv += ["--channel", self.channel]
-        proxy = self.proxy
-        channel = self.channel
+        elif mode == "resource":
+            argv = ["--install", install, "--no-save"]
+        ctx = {"proxy": self.proxy, "channel": self.channel, "timeout": self.timeout}
 
         self.busy = True
         self.busy_kind = kind
         self._set_buttons(False)
-        card.set_status("running")
+        self._sync_status(kind)
         card.set_note("正在进行…")
         self.progress_reset()
-        self.foot("%s：%s…" % (card.label, "检查更新" if mode == "check" else "开始更新"))
+        self.foot("%s：%s…" % (card.label, MODE_LABELS.get(mode, mode)))
 
         rep = gui_reporter.GuiReporter(self.queue, kind)
         events.set_reporter(rep)
-        threading.Thread(target=self._work, args=(kind, mode, install, argv, proxy, channel),
+        threading.Thread(target=self._work, args=(kind, mode, install, argv, ctx),
                          daemon=True).start()
 
-    def _work(self, kind, mode, install, argv, proxy, channel):
+    def _work(self, kind, mode, install, argv, ctx):
         """工作线程入口 —— 只投队列，不碰 widget。"""
         rc, err = 0, ""
         rep = events.get_reporter()
         try:
             if mode == "check":
-                self._check_here(kind, install, proxy, channel)
+                self._check_here(kind, install, ctx)
+            elif mode == "resource":
+                import update_maa_res
+                rc = update_maa_res.main(argv) or 0
             else:
                 rc = _updater(kind).main(argv) or 0
         except events.UpdateError as exc:
@@ -472,14 +543,15 @@ class App:
         finally:
             self.queue.put((kind, "done", mode, rc, err))
 
-    def _check_here(self, kind, install, proxy, channel):
+    def _check_here(self, kind, install, ctx):
         """轻量检查：只比版本，不下载、不写文件。
 
         刻意不调用 main(--check) —— 干跑会多跑一遍选包流程，日志噪音大，
-        而且判定结果要另外从文本里解析。这里直接复用 core 的探测函数，
-        与更新器用的是同一套 norm_ver / 同一批数据源，结论一致。
+        而且判定结果要另外从文本里解析。这里直接复用 core / update_maa_res
+        的探测函数，与更新器用的是同一批数据源，结论一致。
         """
         rep = events.get_reporter()
+        proxy, channel = ctx["proxy"], ctx["channel"]
         if kind == "maa":
             cur = C.norm_ver(C.pe_file_version(os.path.join(install, "MAA.exe")))
             rep.log("  当前 MAA.exe 版本：%s" % (cur or "(读不到)"))
@@ -501,6 +573,31 @@ class App:
         else:
             rep.warn("发现新版本：%s（当前 %s）" % (latest, cur or "未知"))
         self.queue.put((kind, "version", cur, latest))
+
+        if kind == "maa":
+            self._check_resource(install, ctx)
+
+    def _check_resource(self, install, ctx):
+        """顺带查一次资源版本。资源查不到不影响程序本体的检查结论。"""
+        import update_maa_res
+        rep = events.get_reporter()
+        local = update_maa_res.read_local_version(install)
+        remote = ""
+        rep.log("")
+        rep.log("[检查] 查询 MAA 资源最新版本（mirrorchyan）…")
+        try:
+            remote, _info = update_maa_res.remote_version(timeout=ctx["timeout"],
+                                                          proxy=ctx["proxy"])
+        except events.UpdateError:
+            # fail() 已经在日志里写过 [x] 原因，这里只补一句说明后续动作
+            rep.warn("资源版本查询失败，本次跳过资源检查（详见上一行）")
+        if remote:
+            rep.ok("资源 当前 %s  ->  最新 %s" % (local or "?", remote))
+            if local and local == remote:
+                rep.ok("资源已是最新。")
+            else:
+                rep.warn("资源有更新：%s（当前 %s）" % (remote, local or "未知"))
+        self.queue.put(("maa", "resource_version", local, remote))
 
     # -- 队列 ---------------------------------------------------------------
 
@@ -534,8 +631,19 @@ class App:
                 cur, latest = item[2], item[3]
                 card.set_versions(cur=cur, latest=latest)
                 same = bool(cur) and bool(latest) and cur.lower() == latest.lower()
-                card.set_status("latest" if same else "update")
-                card.set_note("已是最新，无需更新" if same else "有新版本可以更新")
+                card.bin_state = "latest" if same else "update"
+                self._sync_status(kind)
+                self._sync_note(kind)
+        elif ev == "resource_version":
+            if card:
+                local, remote = item[2], item[3]
+                card.set_resource(local=local, remote=remote)
+                if remote:
+                    card.res_state = "latest" if (local and local == remote) else "update"
+                else:
+                    card.res_state = "unknown"
+                self._sync_status(kind)
+                self._sync_note(kind)
         elif ev == "done":
             self._task_done(kind, item[2], item[3], item[4])
 
@@ -556,23 +664,44 @@ class App:
         name = card.label if card else kind
 
         if rc == 0:
-            if mode == "update" and card:
-                card.set_status("latest")
-                card.set_versions(latest=card.cur)
-                card.set_note("更新流程结束，请核对上方日志")
-                self.foot("%s 更新流程结束。" % name)
-                messagebox.showinfo(APP_TITLE, "%s 更新流程已结束，结果请看日志区。" % name,
+            if card and mode in ("update", "resource"):
+                install = self.cfg.install_path(kind)
+                if mode == "resource":
+                    card.set_resource(local=read_res_version(install), remote="")
+                    card.res_state = "latest"
+                    done_text = "资源更新流程结束"
+                else:
+                    cur = self.local_version(kind, install)
+                    card.set_versions(cur=cur, latest=cur)
+                    card.bin_state = "latest"
+                    if card.has_resource:
+                        # 本体全量包也包含 resource\，本地资源版本可能随之变化；
+                        # 但那不等于「资源已是最新」，标成未检查更诚实。
+                        card.set_resource(local=read_res_version(install), remote="")
+                        card.res_state = "unknown"
+                    done_text = "更新流程结束"
+                self.foot("%s %s。" % (name, done_text))
+                messagebox.showinfo(APP_TITLE, "%s %s，结果请看日志区。" % (name, done_text),
                                     parent=self.root)
             else:
                 self.foot("%s 检查完成。" % name)
         else:
             if card:
-                card.set_status("failed")
-                card.set_note("失败：" + (err or ("退出码 %d" % rc)))
+                if mode == "resource":
+                    card.res_state = "failed"
+                else:
+                    card.bin_state = "failed"
             self.foot("%s 失败（退出码 %d）" % (name, rc))
             messagebox.showerror(APP_TITLE, "%s 执行失败：\n\n%s"
                                  % (name, err or ("退出码 %d，详情见日志" % rc)),
                                  parent=self.root)
+
+        # 收尾统一重算徽章与提示 —— 否则「检查」这类不改状态的模式会卡在「进行中」
+        if card:
+            if rc != 0:
+                card.set_note("失败：" + (err or ("退出码 %d" % rc)))
+            self._sync_status(kind)
+            self._sync_note(kind)
 
     # -- 进度 / 日志 ---------------------------------------------------------
 
@@ -582,6 +711,9 @@ class App:
 
     def show_progress(self, done, total, speed):
         if not total:
+            # 拿不到总长度（服务端没给 Content-Length）时退化为只报已下载量
+            self.pb.configure(value=0)
+            self.lbl_prog.configure(text="  已下载 %s   %s/s" % (C.human(done), C.human(speed)))
             return
         frac = max(0.0, min(float(done) / float(total), 1.0))
         self.pb.configure(value=frac * 1000)
@@ -632,6 +764,7 @@ class App:
         self.cfg = cfg
         self.proxy = cfg.proxy or None
         self.channel = str(cfg.get("channel", "stable") or "stable")
+        self.timeout = int(cfg.get("network.timeout", 30) or 30)
         self._refresh_header()
         for kind, _label, _marker in PROGRAMS:
             self._refresh_card(kind)
@@ -655,6 +788,50 @@ class App:
         box.insert("1.0", text)
         box.configure(state="disabled")
         ttk.Button(win, text="关闭", command=win.destroy).pack(pady=(0, 10))
+
+    # -- 状态汇总 -----------------------------------------------------------
+
+    def _sync_status(self, kind):
+        """徽章取「程序 + 资源」的综合结论。
+
+        单看程序会漏掉「程序已最新但资源过期」这种最常见的场景 ——
+        游戏活动更新只动资源，不动程序。
+        """
+        card = self.cards.get(kind)
+        if not card:
+            return
+        if self.busy and self.busy_kind == kind:
+            card.set_status("running")
+            return
+        states = [card.bin_state]
+        if card.has_resource:
+            states.append(card.res_state)
+        if any(s == "failed" for s in states):
+            card.set_status("failed")
+        elif any(s == "update" for s in states):
+            card.set_status("update")
+        elif all(s == "latest" for s in states):
+            card.set_status("latest")
+        else:
+            card.set_status("unknown")
+
+    def _sync_note(self, kind):
+        card = self.cards.get(kind)
+        if not card or not card.install_ok or self.busy:
+            return
+        if "failed" in (card.bin_state, card.res_state):
+            return          # 失败说明优先，别被「已是最新」之类覆盖掉
+        parts = []
+        if card.bin_state == "update":
+            parts.append("程序有新版")
+        elif card.bin_state == "latest":
+            parts.append("程序已是最新")
+        if card.has_resource:
+            if card.res_state == "update":
+                parts.append("资源有新版")
+            elif card.res_state == "latest":
+                parts.append("资源已是最新")
+        card.set_note("，".join(parts))
 
     def _set_buttons(self, enabled):
         for card in self.cards.values():

@@ -6,6 +6,8 @@ MAA 本体更新器（方案 B）
 查最新 -> 选包(优先 OTA 增量) -> 镜像下载 -> SHA256 校验 -> 备份 ->
 解压覆盖 + 应用 removelist -> 版本复核
 
+加 --with-resource 则在上面跑完后接着更新 MAA 资源（见 update_maa_res.py）。
+
 不装证书、不改 hosts、不写程序配置（只读配置文件用于探测版本）。
 配置项与目录指定见 ../docs/ghupdate-可配置化与GUI规划.md，用法见 update-all.bat / README.md
 """
@@ -96,8 +98,49 @@ def main(argv=None):
     ap.add_argument("--proxy", default="", help="可选：显式代理，如 http://127.0.0.1:7890")
     ap.add_argument("--channel", default="", choices=["stable", "beta", "alpha"],
                     help="更新频道；留空则取 config.json 的 channel，再退回 stable")
+    ap.add_argument("--with-resource", action="store_true",
+                    help="本体更新完成后，紧接着更新 MAA 资源（关卡数据 / 模板图）")
     args = ap.parse_args(argv)
 
+    rc, install = _run_binary(args)
+
+    if args.with_resource:
+        C.log("\n" + "=" * 66)
+        C.log(" --with-resource：接着更新 MAA 资源")
+        C.log("=" * 66)
+        import update_maa_res  # 延迟导入，免得只想干跑也不得不加载
+        rc = rc or (update_maa_res.main(_resource_argv(args, install)) or 0)
+    return rc
+
+
+def _resource_argv(args, install):
+    """把本体的有效选项原样转给资源更新器。
+
+    安装目录已经定位并校验过，这里固定带上 ``--install`` + ``--no-save``，
+    让资源更新器第一级就命中、不再交互询问（无 stdin 的场景尤其重要）。
+    """
+    out = []
+    if install:
+        out += ["--install", install, "--no-save"]
+    if args.config:
+        out += ["--config", args.config]
+    if args.check:
+        out += ["--check"]
+    if args.yes:
+        out += ["-y"]
+    if args.no_backup:
+        out += ["--no-backup"]
+    if args.proxy:
+        out += ["--proxy", args.proxy]
+    for m in (args.mirror or []):
+        out += ["--mirror", m]
+    if args.no_mirror:
+        out += ["--no-mirror"]
+    return out
+
+
+def _run_binary(args):
+    """本体更新主流程。返回 (退出码, 安装目录) —— 安装目录给 --with-resource 复用。"""
     here = os.path.dirname(os.path.abspath(__file__))
     cache_dir = os.path.join(here, "_cache")
     os.makedirs(cache_dir, exist_ok=True)
@@ -143,7 +186,7 @@ def main(argv=None):
 
     if cur_ver and cur_ver.lower() == latest.lower():
         C.ok("已是最新版本，无需更新。")
-        return 0
+        return 0, install
     if not cur_ver:
         C.warn("无法确定当前版本，将直接使用全量包")
 
@@ -188,11 +231,11 @@ def main(argv=None):
     if args.check:
         C.log("\n[--check] 干跑结束，未下载、未改动任何文件。")
         C.log("  计划：下载 %s（%s） -> SHA256 校验 -> 备份 -> 解压覆盖" % (name, C.human(size)))
-        return 0
+        return 0, install
 
     if not C.confirm("\n即将更新 MAA：%s -> %s（%s）。开始？" % (cur_ver or "?", latest, kind), args.yes):
         C.log("已取消。")
-        return 0
+        return 0, install
 
     # ---- 6. 下载 ----
     C.log("\n[4/6] 下载更新包…")
@@ -272,7 +315,7 @@ def main(argv=None):
         exe = os.path.join(install, MARKER)
         C.log("启动 %s …" % exe)
         os.startfile(exe)  # noqa: S606
-    return 0
+    return 0, install
 
 
 if __name__ == "__main__":

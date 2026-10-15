@@ -1,6 +1,7 @@
 # MaaUpdaterBat
 
-MAA / MaaEnd **程序本体更新**加速工具集。
+MAA / MaaEnd **更新**加速工具集：覆盖 **① MAA 程序本体 ② MAA 资源（关卡数据 / 模板图）
+③ MaaEnd 程序本体** 三条链路。
 
 本机到 GitHub 的**文件分发通道**被限速到 26–63 KB/s，且长连接会被中途 RST
 （`github.com:443` 直连干脆不可达）。两个程序的「检查更新」因此几乎必然失败 ——
@@ -20,7 +21,8 @@ MaaUpdaterBat\
 │   ├── ghupdate-gui.bat       图形界面入口（自动挑带 tkinter 的解释器）
 │   ├── ghupdate-gui-debug.bat 同上，保留控制台看报错
 │   ├── ghupdate.py            中文菜单 + 分发
-│   ├── update_maa.py          MAA 更新器
+│   ├── update_maa.py          MAA 本体更新器
+│   ├── update_maa_res.py      MAA 资源更新器（关卡数据 / 模板图）
 │   ├── update_maaend.py       MaaEnd 更新器
 │   ├── _common.py             共享库（HTTP / 下载 / 校验 / ZIP / 备份 / 版本探测）
 │   ├── core\                  纯逻辑模块（config / events / locate / mirror，CLI 与 GUI 共用）
@@ -39,6 +41,9 @@ MaaUpdaterBat\
     ├── MAA-MaaEnd更新加速计划.md      完整诊断 + 方案 A/B/C
     ├── MAA-MaaEnd更新方案B细化.md     更新规则分析 + 方案 B 设计
     ├── ghupdate-可配置化与GUI规划.md  镜像可换 / 手动指定目录 / GUI 路线
+    ├── ghupdate-MAA资源更新接入方案.md 资源链路实测 + 校验手段取证 + 9 步设计
+    ├── ghupdate-GUI开发规划.md        界面布局 / 线程模型 / 分阶段路线
+    ├── 迁移到其他设备评估.md           换机时的障碍清单与操作步骤
     └── MAA-MaaEnd加速-风险说明.md     写入系统信任库的风险评估
 ```
 
@@ -75,13 +80,14 @@ ghupdate-gui-debug.bat      # 同一个界面，但保留控制台看报错
 ```
 cd ghupdate
 update-all.bat              # 中文菜单
-update-all.bat check        # 干跑，不下载任何东西
-update-all.bat maa          # 只更新 MAA
-update-all.bat all          # 先 MAA 再 MaaEnd
+update-all.bat check        # 三个都干跑，不下载任何东西
+update-all.bat maa          # 只更新 MAA 程序本体
+update-all.bat maares       # 只更新 MAA 资源（关卡数据 / 模板图）
+update-all.bat all          # 本体 -> 资源 -> MaaEnd 依次更新
 ```
 
 两条入口**共用同一份 `config.json` 和同一套更新逻辑**（界面调的就是
-`update_maa.main()`），在窗口里改完设置，命令行立刻生效。
+`update_maa.main()` / `update_maa_res.main()`），在窗口里改完设置，命令行立刻生效。
 
 ⚠️ **更新前必须先完全退出对应程序** —— 脚本检测到目标程序在运行会直接拒绝执行
 （运行时文件被占用，替换必然失败）。界面里也会拦下来并提示。
@@ -121,6 +127,20 @@ update-all.bat maa --mirror https://其他镜像/                换镜像（可
 
 作为对照：同样两个包走直连是 26–63 KB/s，MaaEnd 那 295 MB 至少需要 80 分钟，
 而且实测会在 7 分钟和 19 分钟时被 RST 掐断。
+
+### 资源链路的验证（2026-10-15）
+
+| 项目 | 结果 |
+|---|---|
+| 资源包 | 13.53 MB，镜像下载 18.0–34.8 s（395–780 KB/s） |
+| 包结构 | `MaaResource-main/resource/**` 共 5311 个文件 |
+| 版本比对 | mirrorchyan `version_name` 与包内 `resource/version.json` 的 `last_updated` 完全一致 |
+| 全量比对 | 本机 5311 个文件逐个 size+CRC32 比对 → **5311 相同 / 0 需写入**，验证零误判 |
+| 修复演练 | 故意篡改 `stages.json` + 删掉一个包内文件 → 只写入 2 个文件（788 KB），其余 5309 个一字未动 |
+| 用户数据 | `config.json` / `ocr_config.json` / `copilot` / `custom_infrast` 全程未被触碰 |
+
+> 资源包 13.5 MB 的体量解释了它「一直还算能忍」的原因 —— 同样被限速，14 MB 能熬过去，
+> 284 MB 必然断链。
 
 ---
 

@@ -196,6 +196,15 @@ def download(urls, dest, expected_size=None, timeout=90, proxy=None,
                 t0 = time.time()
                 done = have
                 shown = 0
+                # 没显式给出 expected_size 时（例如 GitHub 的 archive 包），
+                # 尽力从响应头补一个总长度：同一地址走 GET 时 GitHub 会带
+                # Content-Length，走 HEAD 则不带（实测）。补不到就不显示进度，
+                # 不影响下载本身。206 表示服务端支持续传，此时头部长度是剩余量。
+                try:
+                    clen = int(r.headers.get("Content-Length") or 0)
+                except Exception:  # noqa: BLE001
+                    clen = 0
+                total = expected_size or ((have + clen) if (clen and code == 206) else clen)
                 with open(part, mode) as f:
                     while True:
                         b = r.read(262144)
@@ -203,11 +212,11 @@ def download(urls, dest, expected_size=None, timeout=90, proxy=None,
                             break
                         f.write(b)
                         done += len(b)
-                        if expected_size and done - shown >= (1 << 20):
+                        if total and done - shown >= (1 << 20):
                             shown = done
                             el = max(time.time() - t0, 1e-3)
                             spd = (done - have) / el
-                            _events.get_reporter().progress(done, expected_size, spd)
+                            _events.get_reporter().progress(done, total, spd)
                 r.close()
                 _events.get_reporter().progress_end()
                 got = os.path.getsize(part)

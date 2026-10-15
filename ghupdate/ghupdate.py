@@ -20,23 +20,33 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 TARGETS = {
     "maa": ("update_maa.py", "MAA"),
+    "maares": ("update_maa_res.py", "MAA 资源"),
     "maaend": ("update_maaend.py", "MaaEnd"),
 }
 
 KINDS = (("maa", "MAA"), ("maaend", "MaaEnd"))
+
+#: 用于「检查更新」：按本体 -> 资源 -> MaaEnd 的顺序干跑
+CHECK_SCRIPTS = ("update_maa.py", "update_maa_res.py", "update_maaend.py")
+
+#: 用于「更新全部」：同样顺序。资源排在体后面 —— 本体全量包含 resource\，
+#: 后跑资源能拿到最新的那份。
+ALL_KEYS = ("maa", "maares", "maaend")
 
 USAGE = """
 ------------------------------------------------------------
  命令行用法（也可直接在 cmd 里执行）
 
    update-all.bat                          打开本菜单
-   update-all.bat maa      [选项]          更新 MAA
+   update-all.bat maa      [选项]          更新 MAA 程序本体
+   update-all.bat maares   [选项]          更新 MAA 资源（关卡数据 / 模板图）
    update-all.bat maaend   [选项]          更新 MaaEnd
-   update-all.bat all      [选项]          先 MAA 再 MaaEnd
-   update-all.bat check                    两个都干跑
+   update-all.bat all      [选项]          本体 -> 资源 -> MaaEnd 依次更新
+   update-all.bat check                    三个都干跑
 
  安装目录（手动指定，不做自动探测）：
    --install DIR      指定安装目录（含 MAA.exe / MaaEnd.exe 的文件夹）。
+                      MAA 资源也用这一个目录（资源就在它下面的 resource\）。
                       校验通过后会写进 config.json，下次免输。
    --no-save          配合 --install：只本次生效，不写配置
    --inspect [DIR]    检查目录是不是安装目录，并列出子目录候选
@@ -51,6 +61,8 @@ USAGE = """
 
  其他常用选项：
    --check            只检查不下载（干跑）
+   --with-resource    （仅 maa）本体更新完接着更新资源，一条命令跑完
+   --force            （仅 maares）版本号相同也逐文件比对并补齐差异
    --prune            （仅 MAA）按新 filelist 清理废弃程序文件
    --restart          更新完成后启动程序
    -y                 不再交互确认
@@ -72,6 +84,15 @@ def short_dir(path):
     return os.path.basename(path) if path else "(未指定)"
 
 
+def resource_version(cfg):
+    """读本机 MAA 资源的版本号（只读本地文件，不联网）。"""
+    try:
+        import update_maa_res
+        return update_maa_res.read_local_version(cfg.install_path("maa"))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def mirror_text(cfg):
     if not cfg.mirror_enabled:
         return "已禁用（直连 GitHub）"
@@ -85,22 +106,25 @@ def mirror_text(cfg):
 def render_menu(cfg):
     return """
 ============================================================
-   MAA / MaaEnd 本体更新器        镜像：%s
+   MAA / MaaEnd 更新器            镜像：%s
    零系统改动：不装证书 · 不改 hosts · 不写程序配置
 ------------------------------------------------------------
    MAA    : %s
+            资源 %s
    MaaEnd : %s
 ============================================================
 
    1. 仅检查更新（干跑，不下载任何文件）
-   2. 更新 MAA
-   3. 更新 MaaEnd
-   4. 更新全部（MAA + MaaEnd）
-   5. 更改安装目录 / 查看配置
-   6. 查看用法 / 高级选项
+   2. 更新 MAA 程序本体
+   3. 更新 MAA 资源（关卡数据 / 模板图）
+   4. 更新 MaaEnd
+   5. 更新全部（本体 + 资源 + MaaEnd）
+   6. 更改安装目录 / 查看配置
+   7. 查看用法 / 高级选项
    0. 退出
 """ % (mirror_text(cfg),
        short_dir(cfg.install_path("maa")),
+       resource_version(cfg) or "(未指定安装目录)",
        short_dir(cfg.install_path("maaend")))
 
 
@@ -173,16 +197,14 @@ def menu():
     while True:
         C.log(render_menu(cfgmod.load()))
         try:
-            ch = input("请选择 [0-6]: ").strip()
+            ch = input("请选择 [0-7]: ").strip()
         except (EOFError, KeyboardInterrupt):
             C.log("")
             return 0
         if ch == "0":
             return 0
         elif ch == "1":
-            run_script("update_maa.py", ["--check"])
-            C.log("")
-            run_script("update_maaend.py", ["--check"])
+            check_all()
             C.log("")
             input("按回车返回菜单…")
         elif ch == "2":
@@ -190,17 +212,21 @@ def menu():
             C.log("")
             input("按回车返回菜单…")
         elif ch == "3":
-            run_targets(["maaend"], [])
+            run_targets(["maares"], [])
             C.log("")
             input("按回车返回菜单…")
         elif ch == "4":
-            run_targets(["maa", "maaend"], [])
+            run_targets(["maaend"], [])
             C.log("")
             input("按回车返回菜单…")
         elif ch == "5":
-            set_install()
+            run_targets(list(ALL_KEYS), [])
+            C.log("")
             input("按回车返回菜单…")
         elif ch == "6":
+            set_install()
+            input("按回车返回菜单…")
+        elif ch == "7":
             C.log(USAGE)
             input("按回车返回菜单…")
         else:
@@ -231,18 +257,27 @@ def run_targets(keys, extra):
     return rc
 
 
+def check_all():
+    """三个都干跑（本体 -> 资源 -> MaaEnd），不下载任何东西。"""
+    rc = 0
+    for i, script in enumerate(CHECK_SCRIPTS):
+        if i:
+            C.log("\n" + "-" * 60 + "\n")
+        r = run_script(script, ["--check"])
+        if r:
+            rc = r
+    return rc
+
+
 def dispatch(args):
     t = args[0].lower()
     rest = args[1:]
     if t in TARGETS:
         return run_targets([t], rest)
     if t == "all":
-        return run_targets(["maa", "maaend"], rest)
+        return run_targets(list(ALL_KEYS), rest)
     if t == "check":
-        rc = run_script("update_maa.py", ["--check"])
-        C.log("\n" + "-" * 60 + "\n")
-        rc2 = run_script("update_maaend.py", ["--check"])
-        return rc or rc2
+        return check_all()
     if t in ("help", "-h", "--help", "/?"):
         C.log(USAGE)
         return 0
@@ -255,7 +290,7 @@ def dispatch(args):
         C.log('      update-all.bat maa    --install "%s"' % raw)
         C.log('      update-all.bat maaend --install "%s"' % raw)
         C.log("")
-        C.log("    也可以先打开菜单（直接双击 update-all.bat），选 5 手工指定。")
+        C.log("    也可以先打开菜单（直接双击 update-all.bat），选 6 手工指定。")
         return 2
 
     C.log("[x] 未知参数：%s" % t)

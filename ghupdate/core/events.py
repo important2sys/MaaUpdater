@@ -108,6 +108,10 @@ class ConsoleReporter(Reporter):
     # -- 底层 ---------------------------------------------------------------
 
     def _write(self, s):
+        # pythonw 启动时 sys.stdout 可能是 None（无控制台），写进去会抛
+        # AttributeError；界面侧的只读扫描偶尔会走到默认 Reporter，必须兜住。
+        if self.stream is None:
+            return
         self.stream.write(s)
 
     def _flush(self):

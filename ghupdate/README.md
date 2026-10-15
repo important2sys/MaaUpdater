@@ -1,10 +1,13 @@
-# ghupdate —— MAA / MaaEnd 本体更新器（方案 B）
+# ghupdate —— MAA / MaaEnd 更新器（方案 B）
 
-> 生成时间：2026-10-15
+> 生成时间：2026-10-15（2026-10-15 增补：MAA **资源更新**）
 > 目标程序：`D:\RL\MAA-v6.9.5-win-x64`（MAA，实测版本 v6.19.0）、
 > `D:\RL\MaaEnd-win-x86_64-v2.23.0`（MaaEnd，实测版本 v2.32.0）
 > 关联文档：`..\docs\` 下的 `MAA-MaaEnd更新加速计划.md`、`MAA-MaaEnd更新方案B细化.md`、
-> `ghupdate-可配置化与GUI规划.md`
+> `ghupdate-可配置化与GUI规划.md`、`ghupdate-MAA资源更新接入方案.md`
+>
+> 覆盖范围：**① MAA 程序本体 ② MAA 资源（关卡数据/模板图）③ MaaEnd 程序本体**。
+> 原先只有 ①③，「资源」一直靠 MAA 自己点按钮更新。
 
 ## 为什么需要它
 
@@ -21,33 +24,44 @@ MAA 与 MaaEnd 的**程序本体更新**只能走 GitHub。本机到 GitHub 的*
 
 **零系统改动**：不装证书、不改 hosts、不写任何程序配置文件（只「读」配置用于探测版本）。
 
+MAA 的**资源更新**（关卡坐标、模板图）同样是走 GitHub 的 archive 包，只是包只有 13.5 MB，
+所以它在限速下「一直还能忍」。接入方式一样是走镜像，但校验手段不同 —— 见下文
+[资源更新](#maares-7-步)。
+
 ## 快速开始
 
 双击 **`update-all.bat`** 打开中文菜单：
 
 ```
    1. 仅检查更新（干跑，不下载任何文件）
-   2. 更新 MAA
-   3. 更新 MaaEnd
-   4. 更新全部（MAA + MaaEnd）
-   5. 更改安装目录 / 查看配置
-   6. 查看用法 / 高级选项
+   2. 更新 MAA 程序本体
+   3. 更新 MAA 资源（关卡数据 / 模板图）
+   4. 更新 MaaEnd
+   5. 更新全部（本体 + 资源 + MaaEnd）
+   6. 更改安装目录 / 查看配置
+   7. 查看用法 / 高级选项
    0. 退出
 ```
 
-菜单顶部会显示当前镜像与两个程序的安装目录名。**首次运行**如果还没指定过目录，
-会直接问你要路径（可直接把文件夹从资源管理器拖进窗口），校验通过后自动记住。
+菜单顶部会显示当前镜像、两个程序的安装目录名，以及 MAA 资源的当前版本。
+**首次运行**如果还没指定过目录，会直接问你要路径（可直接把文件夹从资源管理器拖进窗口），
+校验通过后自动记住。
 
 命令行同样可用：
 
 ```
 update-all.bat                        打开菜单
-update-all.bat check                  两个都干跑（不下载任何东西）
-update-all.bat maa                    更新 MAA
+update-all.bat check                  三个都干跑（不下载任何东西）
+update-all.bat maa                    更新 MAA 程序本体
+update-all.bat maares                 更新 MAA 资源
 update-all.bat maaend                 更新 MaaEnd
-update-all.bat all                    先 MAA 再 MaaEnd
+update-all.bat all                    本体 -> 资源 -> MaaEnd 依次更新
+update-all.bat maa --with-resource    本体 + 资源，一条命令跑完
 update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
 ```
+
+> **`maares` 用的是哪个目录？** 和 MAA 本体同一个 —— 资源就在安装目录下的
+> `resource\`。所以它复用 `install.maa.path`，不单独配。
 
 ### 图形界面
 
@@ -59,12 +73,13 @@ update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
  ──────────────────────────────────────────────────────────────
   MAA                                              [已是最新]
   安装目录：D:\RL\MAA-v6.9.5-win-x64
-  当前 v6.19.0                最新 v6.19.0
-  [检查更新] [立即更新]                            [打开目录]
+  程序 v6.19.0                最新 v6.19.0
+  资源 2026-10-14 15:45:24.000    已是最新
+  [检查更新] [立即更新] [更新资源]                  [打开目录]
  ──────────────────────────────────────────────────────────────
   MaaEnd                                           [可更新]
   安装目录：D:\RL\MaaEnd-win-x86_64-v2.23.0
-  当前 v2.32.0                最新 v2.33.0
+  程序 v2.32.0                最新 v2.33.0
   [检查更新] [立即更新]                            [打开目录]
  ──────────────────────────────────────────────────────────────
   ███████████░░░░░░░░░░░░░░░  45.2%  132.5 MB / 293.1 MB  3.27 MB/s
@@ -76,15 +91,17 @@ update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
   设置…   查看配置   退出
 ```
 
-- **检查更新** —— 只查版本、不下载，徽章变成「已是最新」或「可更新」
+- **检查更新** —— 只查版本、不下载。MAA 那张卡会**同时**查程序与资源，
+  徽章把两者合起来判定（最常见的情况正是「程序已最新、资源过期」）
 - **立即更新** —— 与命令行**完全相同**的流程（下载 → 校验 → 备份 → 覆盖 → 复核），
   动手前弹一次确认框，过程中进度条实时走、日志逐行刷
+- **更新资源** —— 只跑资源那条链路，同样走完整的下载/校验/备份/写入
 - **设置…** —— 镜像地址、安装目录、代理、超时/重试、更新通道、备份/校验/重启等全部开关
 - **查看配置** —— 等价于 `--show-config`，含每一项的来源
 
 界面与命令行**共用同一个 `config.json`**，改一边另一边立刻生效。界面调用的是
-`update_maa.main()` / `update_maaend.main()`，不是另写一套逻辑 —— 所以不会出现
-「界面能更新、命令行不行」这类差异。
+`update_maa.main()` / `update_maa_res.main()` / `update_maaend.main()`，不是另写一套逻辑
+—— 所以不会出现「界面能更新、命令行不行」这类差异。
 
 > **为什么 GUI 要单独挑解释器**：本机 managed Python（3.13.x）**没有编译 Tcl/Tk**，
 > 连 `import tkinter` 都失败。`ghupdate-gui.bat` 按序探测
@@ -108,6 +125,8 @@ update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
 | `--config PATH` | 指定配置文件（默认 `ghupdate\config.json`） |
 | `--show-config` | 打印当前生效配置（含每项来源）后退出 |
 | `--check` | 只检查不下载（干跑） |
+| `--with-resource` | **仅 MAA**：本体更新完接着更新资源，一条命令跑完 |
+| `--force` | **仅 maares**：版本号相同也逐文件比对并补齐差异（用于修复残缺的本地资源） |
 | `--prune` | **仅 MAA**：按新 `filelist.txt` 清理废弃程序文件（默认关闭） |
 | `--restart` | 更新完成后启动程序 |
 | `-y` | 不再交互确认 |
@@ -262,7 +281,8 @@ ghupdate\
 ├── ghupdate-gui.bat       图形界面入口（自动挑带 tkinter 的解释器 + pythonw）
 ├── ghupdate-gui-debug.bat 同上，但保留控制台看报错（排障用）
 ├── ghupdate.py            中文菜单 + 分发
-├── update_maa.py          MAA 更新器
+├── update_maa.py          MAA 本体更新器
+├── update_maa_res.py      MAA 资源更新器（关卡数据 / 模板图）
 ├── update_maaend.py       MaaEnd 更新器
 ├── _common.py             共享库（HTTP/下载/校验/ZIP/备份/版本探测/配置编排）
 ├── core\                  纯逻辑模块（CLI 与 GUI 共用，不依赖界面）
@@ -311,14 +331,41 @@ ghupdate\
 7. SHA256 与资产 `digest` 比对
 8. 备份 → 解压覆盖（**包内不含 `config/`**）→ 重新读 `interface.json` 复核
 
+### maares（7 步）
+
+资源 = MAA 安装目录下 `resource\` 里的关卡坐标、模板图、`stages.json` 等。
+它和「游戏资源」不是一回事，MAA 自己的「资源更新」按钮做的就是这件事。
+
+1. 读配置 → 确定安装目录（与 MAA 本体共用 `install.maa.path`）
+2. 检查 `MAA.exe` 是否在运行
+3. 读本机 `resource\version.json` 的 `last_updated`
+4. 查远端版本：`mirrorchyan.com/api/resources/MaaResource/latest`（**无需 CDK**，实测 44 ms）
+   —— 版本号就是同一个字符串，直接比对
+5. 下载 `github.com/MaaAssistantArknights/MaaResource/archive/refs/heads/main.zip`
+   （13.5 MB，走镜像；实测 395–780 KB/s）
+6. **校验**：`zipfile.testzip()` 逐条验 CRC32 → 读包内 `resource\version.json`，
+   `last_updated` 必须**严格等于**远端版本，否则立即中止、不落地任何文件
+7. **只写变化的文件**：逐文件按 size + CRC32 比对，变化的先备份再覆盖；
+   写完后重读 `version.json` 复核
+
+> **为什么不用 SHA256**：GitHub 的 archive 包**没有官方 digest**，而它的 ETag 经实测
+> **证伪**（`cc547535…` ≠ 实际 SHA256 `c95911ab…`），不能当校验和。所以改用语义校验
+> ——「包内版本必须等于远端版本」能挡住空包、错分支、截断、镜像错误页、旧缓存。
+>
+> **为什么不删多余文件**：包内没有 `removelist.txt`，无法判断哪些本地文件该删。
+> 保守只增改、不删。实测包内 5311 个文件与本机逐字节一致时，**写入量为 0**。
+
 ## 安全性
 
 | 事项 | 说明 |
 |---|---|
 | 不装证书 / 不改 hosts / 不写程序配置 | 全程只「读」配置文件 |
-| 强制 SHA256 | 三个包官方都提供 `digest`；不符则中止且不覆盖 |
+| 强制 SHA256 | **程序本体**的三个包官方都提供 `digest`；不符则中止且不覆盖 |
+| 资源用语义校验 | 资源包没有官方摘要，改用「包内 `version.json` == 远端版本」+ zip CRC32；同样不符即中止 |
 | 先备份后覆盖 | `_backup\<程序>-<时间戳>\`，整个目录复制回安装目录即可回滚 |
-| 不会碰用户数据 | 三个包都**不含 `config/`**；`--prune` 也会跳过 `config/cache/debug/data/_MaaResource` |
+| 资源只改变化文件 | 逐文件 size + CRC32 比对，未变化的**一个字节都不写** |
+| 不会碰用户数据 | 三个包都**不含 `config/`**；资源包也不含 `custom_infrast/`、`copilot/`、`onnx/` 等；`--prune` 还会跳过 `config/cache/debug/data/_MaaResource` |
+| 版本文件最后写 | 资源写入若中途失败，`version.json` 会被**跳过**，避免被误判成「已更新」 |
 | 运行时拒绝执行 | 检测到目标程序在运行会直接退出 |
 | 幂等 | 已是最新则直接退出；重复运行安全 |
 | 配置写入是原子替换 | 先写 `.tmp` 再 `os.replace`，不会写坏已有配置 |
@@ -342,6 +389,12 @@ xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-20261015-133000\*" "D:
   而官方更新器还有「父进程退出后原子替换」的能力。本工具要求你先手动关掉程序。
 - 目录名不代表版本（`MAA-v6.9.5-win-x64` 里是 v6.19.0）。判断「是否最新」一律以程序内部
   版本为准，`--inspect` 也会显示真实版本。
+- **资源版本的唯一来源是 mirrorchyan**。它挂了就无法拿到远端版本号，也就无法校验包，
+  因此会**直接报错退出**，而不是「跳过检查硬下」。此时可稍后重试。
+- **资源包不支持断点续传**（镜像与直连对 Range 都返回 200 全量）。中断就得重下 13.5 MB
+  —— 约 20–35 秒，尚可接受，所以没做续传。
+- 资源更新比程序更新**频繁得多**（每次游戏活动都会变），日常真正需要跑的多半是
+  `maares` 而不是 `maa`。
 
 ## 环境要求
 

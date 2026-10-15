@@ -42,7 +42,7 @@ UI_FAMILIES = ("Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "SimHei", "S
 MONO_FAMILIES = ("Consolas", "Cascadia Mono", "DejaVu Sans Mono", "Courier New")
 
 #: 计划中的窗口尺寸（会按 DPI 缩放）
-BASE_W, BASE_H = 780, 640
+BASE_W, BASE_H = 780, 660
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +122,7 @@ def apply_ttk_style(root, fonts):
     st.configure("CardTitle.TLabel", background=CARD_BG, foreground=TEXT, font=fonts.h1)
     st.configure("CardPath.TLabel", background=CARD_BG, foreground=MUTED, font=fonts.path)
     st.configure("CardVer.TLabel", background=CARD_BG, foreground=TEXT, font=fonts.version)
+    st.configure("CardRes.TLabel", background=CARD_BG, foreground=MUTED, font=fonts.body)
     st.configure("CardNote.TLabel", background=CARD_BG, foreground=MUTED, font=fonts.small)
     st.configure("PageMuted.TLabel", background=BG, foreground=MUTED, font=fonts.small)
     st.configure("TLabelframe", background=BG)
