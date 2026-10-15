@@ -1,5 +1,9 @@
 # ghupdate —— MAA / MaaEnd 更新器（方案 B）
 
+> ⚠️ **第三方非官方工具**，与 MAA / MaaEnd 开发组没有隶属关系。
+> **默认直连 GitHub，不经过任何第三方服务器**；要用镜像加速请先读
+> [`安全提醒与免责声明.md`](../安全提醒与免责声明.md)。
+>
 > 生成时间：2026-10-15（2026-10-15 增补：MAA **资源更新**）
 > 目标程序：`D:\RL\MAA-v6.9.5-win-x64`（MAA，实测版本 v6.19.0）、
 > `D:\RL\MaaEnd-win-x86_64-v2.23.0`（MaaEnd，实测版本 v2.32.0）
@@ -18,7 +22,7 @@ MAA 与 MaaEnd 的**程序本体更新**只能走 GitHub。本机到 GitHub 的*
 本工具**绕开程序自带的更新器**，自己完成：
 
 ```
-查版本 -> 选包(优先增量) -> 经镜像下载(可配置) -> SHA256 校验
+查版本 -> 选包(优先增量) -> 下载(默认直连，可选镜像) -> SHA256 校验
        -> 备份 -> 解压覆盖 -> 应用 removelist -> 版本复核
 ```
 
@@ -69,7 +73,7 @@ update-all.bat maa --prune --restart  更新 MAA，清理废弃文件并启动
 
 ```
  MAA / MaaEnd 更新器
- 镜像 https://ghfast.top/        配置：...\ghupdate\config.json
+ 镜像未启用（直连 GitHub）      配置：...\ghupdate\config.json
  ──────────────────────────────────────────────────────────────
   MAA                                              [已是最新]
   安装目录：D:\RL\MAA-v6.9.5-win-x64
@@ -213,8 +217,11 @@ MAA 安装目录检查
 {
   "version": 1,
   "mirror": {
-    "enabled": true,
-    // 按顺序尝试，命中即用。两种写法：
+    // 默认 false：不替使用者选择第三方中转，也不让下载内容经过它。
+    // 打开前请先读根目录《安全提醒与免责声明.md》—— 镜像站能看到你请求的
+    // 地址，也有能力替换返回的内容；程序本体有官方 SHA256 兜底，资源包没有。
+    "enabled": false,
+    // 候选地址，按顺序尝试，命中即用。两种写法：
     //   前缀式 "https://ghfast.top/"   -> 拼成 <前缀><完整 github url>
     //   模板式 "https://x.com/{url}"   -> {url} 替换为完整 github url
     "prefixes": ["https://ghfast.top/"],
@@ -249,7 +256,7 @@ update-all.bat maa --show-config
 配置文件：D:\RRL\MaaUpdaterBat\ghupdate\config.json
   状态  ：已读取
 
-  mirror.enabled             = true  [config.json]
+  mirror.enabled             = false  [config.json]
   mirror.prefixes            = https://ghfast.top/  [config.json]
   install.maa.path           = D:\RL\MAA-v6.9.5-win-x64  [config.json]
   ...
@@ -257,17 +264,25 @@ update-all.bat maa --show-config
 
 `[来源]` 只会是「默认 / config.json / 环境变量 / CLI」之一，排查配置没生效时很有用。
 
-## 换镜像
+## 镜像：默认关闭
 
-镜像列表化之后，`ghfast.top` 挂了不必改代码。三种改法：
+**`mirror.enabled` 的默认值是 `false`** —— 默认直连 GitHub，不经过任何第三方
+服务器。这是安全选择而非性能选择，完整理由见根目录
+[`安全提醒与免责声明.md`](../安全提醒与免责声明.md)：镜像站是第三方反向代理，
+能看到你请求的地址，也有能力替换返回的内容；程序本体有官方 SHA256 摘要兜底，
+而 **MAA 资源包没有官方摘要**，走镜像时是否安全完全取决于你是否信任那个站。
+
+要用镜像得自己打开：
 
 ```
-update-all.bat maa --mirror https://新的镜像/            只本次
+update-all.bat maa --mirror https://ghfast.top/              本次启用，并加一个候选
 update-all.bat maa --mirror https://a/ --mirror https://b/   多个候选
-update-all.bat maa --no-mirror                           本次直接直连
+update-all.bat maa --no-mirror                               本次强制直连（覆盖配置）
 ```
 
-或写进 `config.json` 的 `mirror.prefixes` 数组。
+或写进 `config.json`：把 `mirror.enabled` 改成 `true`，候选地址填在
+`mirror.prefixes` 里（默认已保留 `https://ghfast.top/`）。界面里也能改：
+「设置…」→ 勾选「启用镜像加速」。
 
 > 注意：这类镜像只能代理 `github.com` 的下载直链，**代理不了 `api.github.com`**
 > （实测 `ghfast.top` 返回 403）。所以「查版本 / 取 SHA256 摘要」始终走直连，
@@ -379,8 +394,10 @@ xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-20261015-133000\*" "D:
 
 ## 已知限制
 
-- 默认镜像 `ghfast.top` 可能限速或下线 —— 现在**可以直接换**（`--mirror` 或改 `config.json`），
-  全部失效时会自动回退直连（63 KB/s 兜底）。
+- **镜像默认关闭**（`mirror.enabled = false`），所以开箱即用的是直连：慢
+  （26–63 KB/s）且可能中途断线。要提速得自己启用镜像 —— 候选地址与风险说明见
+  根目录《安全提醒与免责声明.md》。`ghfast.top` 本身也可能限速或下线，届时可以
+  直接换（`--mirror` 或改 `config.json`）。
 - 镜像**代理不了 `api.github.com`**（返回 403），所以「查版本/取摘要」走直连
   （实测 200 / 1.8 s），只有「下载文件」走镜像。
 - 磁盘：MAA 增量约需 100 MB；全量约需 600 MB；MaaEnd 全量约需 900 MB

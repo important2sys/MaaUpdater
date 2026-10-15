@@ -424,7 +424,7 @@ class App:
             if len(prefixes) > 1:
                 mir += " 等 %d 个" % len(prefixes)
         else:
-            mir = "镜像已禁用（直连 GitHub）"
+            mir = "镜像未启用（直连 GitHub）"
         self.lbl_sub.configure(text="%s        配置：%s" % (mir, self.cfg.path))
 
     def foot(self, text):

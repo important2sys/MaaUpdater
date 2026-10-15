@@ -29,9 +29,16 @@ SOURCE_CLI = "CLI"
 DEFAULTS = {
     "version": 1,
     "mirror": {
-        # 总开关；关闭则一律直连 GitHub
-        "enabled": True,
-        # 按顺序尝试。两种写法：
+        # 总开关。**默认关闭**，理由是安全而不是性能，详见
+        # 《安全提醒与免责声明》：这些「加速站」是第三方反向代理，能看到你
+        # 请求的完整 URL，也有能力替换返回给你的内容。程序本体的更新有官方
+        # SHA256 摘要兜底（被改会被发现并拒绝写入），但 MAA 资源包没有官方
+        # 摘要，走镜像时安全性完全取决于你是否信任那一个站。
+        # 需要提速时由你自己打开：GUI「设置…」勾选，或把这里改成 true，
+        # 或临时用命令行 --mirror https://ghfast.top/
+        "enabled": False,
+        # 候选镜像地址（保留备用，enabled 为 false 时不会被使用）。
+        # 两种写法：
         #   前缀式 "https://ghfast.top/"  -> <前缀><完整 github url>
         #   模板式 "https://x.com/{url}"  -> {url} 替换为完整 github url
         "prefixes": ["https://ghfast.top/"],

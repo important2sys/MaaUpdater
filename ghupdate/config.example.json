@@ -1,7 +1,7 @@
 {
   "version": 1,
   "mirror": {
-    "enabled": true,
+    "enabled": false,
     "prefixes": [
       "https://ghfast.top/"
     ],

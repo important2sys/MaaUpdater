@@ -1,6 +1,22 @@
 # -*- coding: utf-8 -*-
 """镜像 URL 构造 —— 零第三方依赖。
 
+**默认关闭**。这些「加速站」是第三方反向代理：它能看到你请求的完整 URL，
+也有能力替换返回给你的内容。
+
+不同链路的兜底能力不一样，这一点很重要：
+
+  · MAA / MaaEnd 程序本体 —— 有 GitHub 官方 SHA256 摘要，篡改会在校验阶段
+    被发现并拒绝写入
+  · MAA 资源（update_maa_res）—— 走的是分支归档 `archive/main.zip`，
+    **没有官方摘要**。只能做语义校验（包内 version.json 的 last_updated 必须
+    等于 mirrorchyan 的版本号）+ CRC32，挡不住同时改写 version.json 与内容的
+    镜像站
+
+所以「要不要走镜像」本质上是一个信任判断，本模块不替使用者做这个决定 ——
+由 config.json 的 mirror.enabled 控制，默认 false。详见根目录
+《安全提醒与免责声明.md》。
+
 2026-10-15 实测：13 个常见 GitHub 加速镜像中只有 ghfast.top 可用；
 官方 MAA 元数据里的 67 个 mirrors 全是空数组，三个官方 CDN 均已失效。
 
@@ -11,14 +27,24 @@
 
 from __future__ import annotations
 
-#: 可用性经实测确认的默认镜像（按优先级）
+#: 曾被实测确认可用的镜像（现仅作候选保留；是否启用由 config 决定）
 DEFAULT_PREFIXES = ["https://ghfast.top/"]
 
-#: 实测不可用、仅作参考的镜像（默认不启用，需要时可手动加进 config.json）
+#: 实测不可用、仅作参考的镜像（需要时可手动加进 config.json）
 KNOWN_DEAD_PREFIXES = [
     "https://gh-proxy.com/",          # 403
     "https://ghproxy.net/",           # 超时
     "https://hub.gitmirror.com/",     # DNS 失败
+]
+
+#: 社区常见的其他候选。本项目**未实测**，列在这里只是省得你到处找 ——
+#: 不代表推荐，也不代表现在仍然可用。用之前请自行判断。
+OTHER_CANDIDATES = [
+    "https://ghproxy.homeboyc.cn/",
+    "https://mirror.ghproxy.com/",
+    "https://github.moeyy.xyz/",
+    "https://gh.h233.eu.org/",
+    "https://githubfast.com/",
 ]
 
 

@@ -53,7 +53,8 @@ class SettingsDialog(tk.Toplevel):
     def _make_vars(self):
         g = self.cfg.get
         b = tk.BooleanVar
-        self.var_mirror = b(value=bool(g("mirror.enabled", True)))
+        # 与 core/config.py 的 DEFAULTS 保持一致：镜像默认关闭（安全考量）
+        self.var_mirror = b(value=bool(g("mirror.enabled", False)))
         self.var_fallback = b(value=bool(g("mirror.fallback_direct", True)))
         self.var_maa = tk.StringVar(value=self.cfg.install_path("maa"))
         self.var_maaend = tk.StringVar(value=self.cfg.install_path("maaend"))
@@ -99,23 +100,29 @@ class SettingsDialog(tk.Toplevel):
         box.grid(row=row, column=0, sticky="we", pady=(0, 10))
         box.columnconfigure(0, weight=1)
 
-        ttk.Checkbutton(box, text="启用镜像加速（关闭则一律直连 GitHub）",
+        ttk.Checkbutton(box, text="启用镜像加速（默认关闭；开启后更快，但内容会经过第三方服务器）",
                         variable=self.var_mirror).grid(row=0, column=0, sticky="w")
         ttk.Checkbutton(box, text="镜像全部失败后，回退到 GitHub 直连（很慢，但能兜住）",
-                        variable=self.var_fallback).grid(row=1, column=0, sticky="w", pady=(2, 6))
+                        variable=self.var_fallback).grid(row=1, column=0, sticky="w", pady=(2, 4))
 
-        ttk.Label(box, text="镜像地址（每行一个，按顺序尝试）：",
-                  style="PageMuted.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Label(box,
+                  text="注意：镜像站是第三方反向代理，能看到你请求的地址，也有能力替换内容。\n"
+                       "程序本体有官方 SHA256 兜底、资源包没有。是否可信由你判断，详见免责声明。",
+                  style="PageMuted.TLabel", justify="left").grid(
+                      row=2, column=0, sticky="w", pady=(2, 8))
+
+        ttk.Label(box, text="镜像地址（每行一个，按顺序尝试；留空等同直连）：",
+                  style="PageMuted.TLabel").grid(row=3, column=0, sticky="w")
         self.txt_mirror = tk.Text(box, height=4, width=72, font=self.fonts.mono_body,
                                   bg=theme.LOG_BG, fg=theme.TEXT, relief="flat",
                                   highlightthickness=1, highlightbackground=theme.BORDER,
                                   padx=6, pady=4, wrap="none")
-        self.txt_mirror.grid(row=3, column=0, sticky="we", pady=(3, 4))
+        self.txt_mirror.grid(row=4, column=0, sticky="we", pady=(3, 4))
 
         ttk.Label(box,
                   text="前缀式：https://ghfast.top/            （地址 = 前缀 + 完整 GitHub 地址）\n"
                        "模板式：https://例子.com/{url}         （{url} 会被替换成完整 GitHub 地址）",
-                  style="PageMuted.TLabel", justify="left").grid(row=4, column=0, sticky="w")
+                  style="PageMuted.TLabel", justify="left").grid(row=5, column=0, sticky="w")
         return row + 1
 
     def _group_dirs(self, parent, row):

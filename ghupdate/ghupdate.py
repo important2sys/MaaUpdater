@@ -35,6 +35,11 @@ ALL_KEYS = ("maa", "maares", "maaend")
 
 USAGE = """
 ------------------------------------------------------------
+ 安全提醒：本项目是第三方非官方工具，与 MAA / MaaEnd 开发组没有任何
+ 隶属关系。默认走 GitHub 直连；如需启用第三方镜像加速，请自行判断该
+ 镜像站是否可信（程序本体有官方 SHA256 兜底，资源包没有）。
+ 详见根目录《安全提醒与免责声明.md》。
+
  命令行用法（也可直接在 cmd 里执行）
 
    update-all.bat                          打开本菜单
@@ -54,8 +59,8 @@ USAGE = """
                       清除已保存的安装路径
 
  镜像与配置：
-   --mirror URL       覆盖镜像前缀，可重复传多次形成候选列表
-   --no-mirror        本次禁用镜像，改走 GitHub 直连
+   --mirror URL       本次启用镜像，并把它加到候选前缀里（可重复传多次）
+   --no-mirror        本次强制直连 GitHub，忽略配置里已开启的镜像
    --config PATH      指定配置文件（默认 ghupdate\\config.json）
    --show-config      打印当前生效配置（含每项来源）后退出
 
@@ -95,7 +100,7 @@ def resource_version(cfg):
 
 def mirror_text(cfg):
     if not cfg.mirror_enabled:
-        return "已禁用（直连 GitHub）"
+        return "未启用（直连 GitHub）"
     items = cfg.mirror_prefixes
     if not items:
         return "(未配置，等同直连)"
@@ -107,6 +112,7 @@ def render_menu(cfg):
     return """
 ============================================================
    MAA / MaaEnd 更新器            镜像：%s
+   非官方工具 · 与 MAA / MaaEnd 开发组没有任何隶属关系
    零系统改动：不装证书 · 不改 hosts · 不写程序配置
 ------------------------------------------------------------
    MAA    : %s
@@ -131,7 +137,7 @@ def render_menu(cfg):
 def show_brief(cfg):
     C.log("")
     C.log("  配置文件：%s%s" % (cfg.path, "" if cfg.exists else "   （尚不存在）"))
-    C.log("  镜像    ：%s" % ("已禁用（直连）" if not cfg.mirror_enabled
+    C.log("  镜像    ：%s" % ("未启用（直连）" if not cfg.mirror_enabled
                              else "、".join(cfg.mirror_prefixes) or "(未配置)"))
     for kind, label in KINDS:
         C.log("  %-7s ：%s" % (label, cfg.install_path(kind) or "(未指定)"))

@@ -13,6 +13,7 @@
     MaaUpdaterBat\\
     ├── 启动更新器.bat        <- 唯一入口，双击就完事
     ├── 使用说明.txt
+    ├── 安全提醒与免责声明.md
     ├── README.md
     ├── ghupdate\\              <- 主程序（界面 + 命令行）
     └── 可选\\                  <- 平时用不到，删了也不影响使用
@@ -56,6 +57,7 @@ TOP = "MaaUpdaterBat"
 LAYOUT = [
     ("file", "启动更新器.bat", "启动更新器.bat"),
     ("file", "使用说明.txt", "使用说明.txt"),
+    ("file", "安全提醒与免责声明.md", "安全提醒与免责声明.md"),
     ("file", "README.md", "README.md"),
     ("dir", "ghupdate", "ghupdate"),
     ("dir", "ghproxy", "可选/ghproxy"),
@@ -111,7 +113,8 @@ EXPAND_DIRS = ("可选",)
 
 # 摘要里包根条目的排列顺序：入口永远排第一，用户扫一眼就知道点哪个。
 # 没列在这里的按名字排在后面。
-ROOT_ORDER = ["启动更新器.bat", "使用说明.txt", "README.md", "ghupdate", "可选"]
+ROOT_ORDER = ["启动更新器.bat", "使用说明.txt", "安全提醒与免责声明.md",
+              "README.md", "ghupdate", "可选"]
 
 
 # ---------------------------------------------------------------------------
