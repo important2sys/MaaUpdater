@@ -139,32 +139,7 @@ update-all.bat maa --inspect "D:\RL"                      检查目录并列出�
 
 ---
 
-## 八、已验证结果
-
-### 程序本体更新（2026-10-15）
-
-| 程序 | 更新前 | 更新后 | 包体量 | 耗时 |
-|---|---|---|---|---|
-| MAA | v6.18.0 | **v6.19.0** | 19.57 MB（OTA 增量） | 60.8 s |
-| MaaEnd | v2.30.1 | **v2.32.0** | 295.21 MB（全量） | 227.1 s |
-
-两个包的 SHA256 均与 GitHub 官方 `digest` **逐字符一致**；用户配置（`config/gui.json`、
-`config/mxu-MaaEnd.json`）时间戳未变，登录状态与设置完好。
-
-### 资源更新（2026-10-15）
-
-| 项目 | 结果 |
-|---|---|
-| 资源包 | 13.53 MB，下载耗时 18.0–34.8 s（395–780 KB/s） |
-| 包结构 | `MaaResource-main/resource/**` 共 5,311 个文件 |
-| 版本比对 | mirrorchyan `version_name` 与包内 `resource/version.json` 的 `last_updated` 完全一致 |
-| 全量比对 | 本机 5,311 个文件逐个 `size` + CRC32 比对 → **5311 相同 / 0 需写入**，零误判 |
-| 修复演练 | 篡改 `stages.json` 并删除一个包内文件 → 仅写入 2 个文件（788 KB），其余 5,309 个文件未变 |
-| 用户数据 | `config.json` / `ocr_config.json` / `copilot` / `custom_infrast` 全程未被触碰 |
-
----
-
-## 九、已知限制
+## 八、已知限制
 
 - **镜像默认关闭**，因此开箱即用的是直连通道：较慢，且可能中途断线。如需提速，须
   手动启用镜像（界面「设置…」或 `config.json`），并自行评估该镜像站的可信度。
@@ -184,7 +159,7 @@ update-all.bat maa --inspect "D:\RL"                      检查目录并列出�
 
 ---
 
-## 十、回滚
+## 九、回滚
 
 每次更新前会自动备份至 `ghupdate\_backup\<程序>-<时间戳>\`，将其中内容复制回安装
 目录即可还原：
@@ -195,7 +170,7 @@ xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-<时间戳>\*" "D:\RL\
 
 ---
 
-## 十一、文档索引
+## 十、文档索引
 
 | 文档 | 内容 |
 |---|---|
@@ -206,7 +181,7 @@ xcopy /E /Y /I "D:\RRL\MaaUpdaterBat\ghupdate\_backup\MAA-<时间戳>\*" "D:\RL\
 
 ---
 
-## 十二、许可
+## 十一、许可
 
 本项目以 **MIT 许可**发布，全文见 [`LICENSE`](LICENSE)。
 
