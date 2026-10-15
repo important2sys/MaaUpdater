@@ -4,8 +4,6 @@
 业务逻辑（update_maa / update_maaend）只通过全局 Reporter 产生事件；
 具体落到终端还是窗口，由注入的实现决定。CLI 与 GUI 因此可以共用
 同一份逻辑代码，输出格式各自负责。
-
-设计基线见 ../../docs/技术说明.md
 """
 
 import sys

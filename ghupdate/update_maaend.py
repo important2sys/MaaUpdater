@@ -7,7 +7,6 @@ MaaEnd 本体更新器
 解压覆盖 -> 版本复核
 
 不装证书、不改 hosts、不写程序配置（只读 interface.json 用于探测版本）。
-配置项与目录指定见 ../docs/技术说明.md。
 """
 
 import argparse

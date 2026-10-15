@@ -9,7 +9,7 @@ MAA 本体更新器
 加 --with-resource 则在上面跑完后接着更新 MAA 资源（见 update_maa_res.py）。
 
 不装证书、不改 hosts、不写程序配置（只读配置文件用于探测版本）。
-配置项与目录指定见 ../docs/技术说明.md，用法见 update-all.bat / README.md
+用法见 update-all.bat / README.md
 """
 
 import argparse
