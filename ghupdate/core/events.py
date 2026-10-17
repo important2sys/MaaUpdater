@@ -155,6 +155,12 @@ class ConsoleReporter(Reporter):
             return input().strip().lower() in ("y", "yes")
         except EOFError:
             return False
+        except (RuntimeError, OSError):
+            # 没有可读的输入流（pythonw / 被重定向 / stdin 已关闭）时 input()
+            # 会抛 RuntimeError("lost sys.stdin")。此时无法询问，按「否」处理，
+            # 绝不因为拿不到输入就把流程往下推。
+            self.log("[!] 当前环境无法读取输入，按「取消」处理")
+            return False
 
     # -- 失败 ---------------------------------------------------------------
 

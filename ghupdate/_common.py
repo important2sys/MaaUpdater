@@ -617,11 +617,15 @@ def prune_by_filelist(install_dir, filelist_rel, allowed_roots):
 # ----------------------------------------------------------------------------
 
 def confirm(prompt, assume_yes=False):
+    """征询确认 —— 一律委托给全局 Reporter。
+
+    命令行下由 ConsoleReporter 在终端询问（输出格式 ``%s [y/N] `` 与旧实现
+    逐字符一致），GUI 下由 GuiReporter 弹窗。
+
+    **不再直接写 sys.stdout**：``pythonw`` 启动时没有控制台，``sys.stdout``
+    是 None，写进去会抛 `AttributeError: 'NoneType' object has no attribute
+    'write'`。界面点「立即更新」时不带 --yes，正会走到这里。
+    """
     if assume_yes:
         return True
-    sys.stdout.write("%s [y/N] " % prompt)
-    sys.stdout.flush()
-    try:
-        return input().strip().lower() in ("y", "yes")
-    except EOFError:
-        return False
+    return get_reporter().confirm(str(prompt), False)
